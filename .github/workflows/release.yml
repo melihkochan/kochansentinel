@@ -41,12 +41,6 @@ jobs:
             -p:EnableCompressionInSingleFile=true `
             -o ./release_out
 
-      - name: Generate SHA-256 Checksum
-        shell: pwsh
-        run: |
-          $hash = (Get-FileHash ./release_out/KochanSentinel.exe -Algorithm SHA256).Hash
-          "$hash  KochanSentinel.exe" | Out-File -FilePath ./release_out/KochanSentinel-SHA256.txt -Encoding utf8
-
       - name: Create GitHub Release & Upload EXE
         uses: softprops/action-gh-release@v2
         with:
@@ -55,7 +49,6 @@ jobs:
           generate_release_notes: true
           files: |
             ./release_out/KochanSentinel.exe
-            ./release_out/KochanSentinel-SHA256.txt
           body: |
             ### İndirme & Kurulum (Windows 10/11 64-bit)
             1. Aşağıdaki **`KochanSentinel.exe`** dosyasını doğrudan indirin (kurulum veya ekstra .NET yüklemesi gerekmez, tek dosya çalışır).

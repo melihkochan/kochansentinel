@@ -96,7 +96,7 @@
                                     <TextBlock Text="SENTINEL GUARD" FontSize="9.5" Foreground="#71717A" FontWeight="SemiBold" Margin="0,1,0,0" />
                                 </StackPanel>
                                 <Border Grid.Column="2" Background="#09090B" CornerRadius="5" Padding="6,2" VerticalAlignment="Top" BorderBrush="#27272A" BorderThickness="1">
-                                    <TextBlock Text="v1.0" FontSize="9.5" FontWeight="SemiBold" Foreground="#A1A1AA" />
+                                    <TextBlock Text="v1.0.1" FontSize="9.5" FontWeight="SemiBold" Foreground="#A1A1AA" />
                                 </Border>
                             </Grid>
 
@@ -123,7 +123,7 @@
                                         <ColumnDefinition Width="Auto" />
                                     </Grid.ColumnDefinitions>
                                     <Ellipse Grid.Column="0" Width="6" Height="6" Fill="#22C55E" VerticalAlignment="Center" Margin="0,0,7,0" />
-                                    <TextBlock Grid.Column="1" Text="Tam Yetki • Admin" Foreground="#86EFAC" FontSize="10.5" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                    <TextBlock Grid.Column="1" Text="Yönetici İzni Modu" Foreground="#86EFAC" FontSize="10.5" FontWeight="SemiBold" VerticalAlignment="Center" />
                                     <Path Grid.Column="2" Style="{StaticResource ShadcnIconPath}" Data="{StaticResource GeoShield}" Width="11" Height="11" Stroke="#4ADE80" />
                                 </Grid>
                             </Border>
