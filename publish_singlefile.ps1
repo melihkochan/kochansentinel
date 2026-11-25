@@ -1,5 +1,5 @@
 param(
-    [switch]$SelfContained = $false
+    [switch]$SelfContained = $true
 )
 
 $ErrorActionPreference = "Stop"
@@ -18,4 +18,4 @@ Write-Host "Publishing KOCHAN Sentinel Single-File EXE (SelfContained=$scArg) ->
     -o $outDir
 
 Write-Host "`nTamamlandi! Tekil dosya:" -ForegroundColor Green
-Get-Item "$outDir\KochanSentinel.App.exe" | Select-Object FullName, Length, LastWriteTime
+Get-Item "$outDir\KochanSentinel.exe" | Select-Object FullName, Length, LastWriteTime

@@ -1,0 +1,63 @@
+name: Build & Release KOCHAN Sentinel
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag (e.g. v1.0.0)"
+        required: true
+        default: "v1.0.0"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 8 SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Restore dependencies
+        run: dotnet restore KochanSentinel.sln
+
+      - name: Publish Standalone Single-File EXE (win-x64)
+        run: |
+          dotnet publish src/KochanSentinel.App/KochanSentinel.App.csproj `
+            -c Release `
+            -r win-x64 `
+            --self-contained true `
+            -p:PublishSingleFile=true `
+            -p:IncludeNativeLibrariesForSelfExtract=true `
+            -p:EnableCompressionInSingleFile=true `
+            -o ./release_out
+
+      - name: Generate SHA-256 Checksum
+        shell: pwsh
+        run: |
+          $hash = (Get-FileHash ./release_out/KochanSentinel.exe -Algorithm SHA256).Hash
+          "$hash  KochanSentinel.exe" | Out-File -FilePath ./release_out/KochanSentinel-SHA256.txt -Encoding utf8
+
+      - name: Create GitHub Release & Upload EXE
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.tag || github.ref_name }}
+          name: "KOCHAN Sentinel ${{ inputs.tag || github.ref_name }}"
+          generate_release_notes: true
+          files: |
+            ./release_out/KochanSentinel.exe
+            ./release_out/KochanSentinel-SHA256.txt
+          body: |
+            ### İndirme & Kurulum (Windows 10/11 64-bit)
+            1. Aşağıdaki **`KochanSentinel.exe`** dosyasını doğrudan indirin (kurulum veya ekstra .NET yüklemesi gerekmez, tek dosya çalışır).
+            2. Sağ tıklayıp **Yönetici olarak çalıştırın** (UAC izni otomatik istenir).
+            3. `Alt + Z` kısayoluyla Mini HUD'ı açıp kapatabilirsiniz.

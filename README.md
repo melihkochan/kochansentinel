@@ -2,6 +2,13 @@
 
 Windows 11 (.NET 8 / WPF) için geliştirilmiş sistem telemetrisi, donanım benchmark'ı, TreeSize/Treemap disk analizi, oyun optimizasyonu ve aktif savunma (user-mode EDR) merkezi.
 
+## Doğrudan İndir (Kurulumsuz Tek EXE)
+
+- **Doğrudan İndirme:** [KochanSentinel.exe (Son Sürüm)](https://github.com/melihkochan/kochansentinel/releases/latest/download/KochanSentinel.exe)
+- **Tüm Sürümler & Sürüm Notları:** [GitHub Releases](https://github.com/melihkochan/kochansentinel/releases/latest)
+
+> **Not:** Tek dosya (Self-Contained Win-x64) olarak paketlenir; ekstra `.NET Runtime` kurulumu gerekmez. Tam sistem optimizasyonu ve güvenlik denetimi için yönetici yetkisiyle çalışır.
+
 ## Öne Çıkan Özellikler
 
 - **Canlı Sistem İzleme & Mini HUD (`Alt + Z`)**
@@ -20,13 +27,13 @@ Windows 11 (.NET 8 / WPF) için geliştirilmiş sistem telemetrisi, donanım ben
   - Gerçek zamanlı dosya kalkanı (SHA-256, Shannon Entropi, imza doğrulama, VirusTotal/MalwareBazaar, Defender).
   - DPAPI/AES şifreli Karantina Kasası, Başlangıç/Görev/Servis/WMI kalıcılık denetimi, BYOVD `.sys` çekirdek sürücü taraması, enjekte DLL/tarayıcı eklentisi denetimi, Fidye Honeypot tuzakları, USB bellek tarayıcısı, işlem öncesi otomatik Geri Yükleme Noktası ve `--watchdog` Self-Defense.
 
-## Derleme ve Yayınlama
+## Kaynaktan Derleme ve Paketleme
 
 ```powershell
 dotnet build KochanSentinel.sln -c Release
 ```
 
-Tek dosya (single-file) `.exe` üretmek için:
+Tek dosya (Standalone `KochanSentinel.exe`) üretmek için:
 
 ```powershell
 .\publish_singlefile.ps1
