@@ -1,0 +1,73 @@
+<Window x:Class="KochanSentinel.App.MiniMonitorWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:controls="clr-namespace:KochanSentinel.App.Controls"
+        Title="KOCHAN Mini Monitör"
+        WindowStyle="None"
+        AllowsTransparency="True"
+        Background="Transparent"
+        Topmost="True"
+        ShowActivated="False"
+        ShowInTaskbar="False"
+        ResizeMode="NoResize"
+        SizeToContent="WidthAndHeight"
+        MouseLeftButtonDown="Window_MouseLeftButtonDown"
+        MouseDoubleClick="Window_MouseDoubleClick">
+
+    <Border x:Name="HudRootBorder" Background="#F009090B" CornerRadius="8" Padding="10,6" BorderBrush="#27272A" BorderThickness="1" Cursor="SizeAll"
+            ToolTip="Alt+Z ile aç/kapat • Sürükleyerek taşı • Çift tıkla: Ana Pencere">
+        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+            <Border Width="7" Height="7" CornerRadius="4" Background="#22C55E" Margin="0,0,8,0" VerticalAlignment="Center" />
+
+            <StackPanel x:Name="PanelHudCpu" Orientation="Horizontal" VerticalAlignment="Center">
+                <TextBlock Text="CPU" Foreground="#71717A" FontSize="10.5" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,4,0" />
+                <TextBlock x:Name="TxtCpu" Text="0%" Foreground="#FBBF24" FontSize="12" FontWeight="Bold" VerticalAlignment="Center" Margin="0,0,5,0" />
+                <controls:SparklineControl x:Name="SparkCpu" Width="30" Height="15" StrokeBrush="#FBBF24" MaxValue="100" VerticalAlignment="Center" Margin="0,0,8,0" />
+                <Border Width="1" Height="14" Background="#27272A" Margin="0,0,8,0" />
+            </StackPanel>
+
+            <StackPanel x:Name="PanelHudRam" Orientation="Horizontal" VerticalAlignment="Center">
+                <TextBlock Text="RAM" Foreground="#71717A" FontSize="10.5" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,4,0" />
+                <TextBlock x:Name="TxtRam" Text="0%" Foreground="#38BDF8" FontSize="12" FontWeight="Bold" VerticalAlignment="Center" Margin="0,0,5,0" />
+                <controls:SparklineControl x:Name="SparkRam" Width="30" Height="15" StrokeBrush="#38BDF8" MaxValue="100" VerticalAlignment="Center" Margin="0,0,8,0" />
+                <Border Width="1" Height="14" Background="#27272A" Margin="0,0,8,0" />
+            </StackPanel>
+
+            <StackPanel x:Name="PanelHudGpu" Orientation="Horizontal" VerticalAlignment="Center">
+                <TextBlock Text="GPU" Foreground="#71717A" FontSize="10.5" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,4,0" />
+                <TextBlock x:Name="TxtGpu" Text="--" Foreground="#C084FC" FontSize="12" FontWeight="Bold" VerticalAlignment="Center" Margin="0,0,8,0" />
+                <Border Width="1" Height="14" Background="#27272A" Margin="0,0,8,0" />
+            </StackPanel>
+
+            <StackPanel x:Name="PanelHudFps" Orientation="Horizontal" VerticalAlignment="Center">
+                <TextBlock Text="FPS" Foreground="#71717A" FontSize="10.5" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,4,0" />
+                <TextBlock x:Name="TxtFps" Text="--" Foreground="#FAFAFA" FontSize="12" FontWeight="Bold" VerticalAlignment="Center" Margin="0,0,8,0" />
+                <Border Width="1" Height="14" Background="#27272A" Margin="0,0,8,0" />
+            </StackPanel>
+
+            <StackPanel x:Name="PanelHudNet" Orientation="Horizontal" VerticalAlignment="Center">
+                <TextBlock Text="NET" Foreground="#71717A" FontSize="10.5" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,4,0" />
+                <TextBlock x:Name="TxtNet" Text="↓0.0M" Foreground="#4ADE80" FontSize="12" FontWeight="Bold" VerticalAlignment="Center" Margin="0,0,8,0" />
+                <Border Width="1" Height="14" Background="#27272A" Margin="0,0,8,0" />
+            </StackPanel>
+
+            <StackPanel x:Name="PanelHudPing" Orientation="Horizontal" VerticalAlignment="Center">
+                <TextBlock Text="PING" Foreground="#71717A" FontSize="10.5" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,4,0" />
+                <TextBlock x:Name="TxtPing" Text="--" Foreground="#E4E4E7" FontSize="12" FontWeight="Bold" VerticalAlignment="Center" Margin="0,0,8,0" />
+            </StackPanel>
+
+            <Border x:Name="BoostFeedbackPill" Visibility="Collapsed" Background="#052E16" BorderBrush="#166534" BorderThickness="1"
+                    CornerRadius="5" Padding="6,2" Margin="0,0,6,0" VerticalAlignment="Center">
+                <TextBlock x:Name="TxtBoostFeedback" Text="✓ Optimize edildi" Foreground="#86EFAC" FontSize="11" FontWeight="SemiBold" />
+            </Border>
+
+            <Button x:Name="BtnBoost" Content="⚡" ToolTip="Hızlı RAM &amp; Temp Optimize Et" Click="BoostBtn_Click"
+                    Background="#18181B" Foreground="#FAFAFA" BorderBrush="#27272A" BorderThickness="1"
+                    Padding="7,2" FontSize="11" Cursor="Hand" Margin="0,0,4,0" />
+
+            <Button Content="✕" ToolTip="Gizle (Alt+Z ile geri aç)" Click="CloseBtn_Click"
+                    Background="Transparent" Foreground="#71717A" BorderThickness="0"
+                    Padding="5,2" FontSize="11" Cursor="Hand" />
+        </StackPanel>
+    </Border>
+</Window>

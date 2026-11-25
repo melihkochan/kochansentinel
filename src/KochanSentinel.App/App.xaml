@@ -1,0 +1,310 @@
+<Application x:Class="KochanSentinel.App.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+             xmlns:conv="clr-namespace:KochanSentinel.App.Converters">
+    <Application.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ui:ThemesDictionary Theme="Dark" />
+                <ui:ControlsDictionary />
+            </ResourceDictionary.MergedDictionaries>
+
+            <conv:SeverityToBrushConverter x:Key="SeverityToBrush" />
+            <conv:SeverityToBgBrushConverter x:Key="SeverityToBgBrush" />
+            <conv:SeverityToBorderBrushConverter x:Key="SeverityToBorderBrush" />
+            <conv:BoolToVisibilityConverter x:Key="BoolToVis" />
+            <conv:InverseBoolToVisibilityConverter x:Key="InvBoolToVis" />
+            <conv:NotNullToVisibilityConverter x:Key="NotNullToVis" />
+            <conv:ExePathToIconConverter x:Key="ExeToIcon" />
+            <conv:PercentToBrushConverter x:Key="PercentToBrush" />
+            <conv:CategoryToBrushConverter x:Key="CategoryToBrush" />
+            <conv:SignedToBrushConverter x:Key="SignedToBrush" />
+            <conv:SignedToTextConverter x:Key="SignedToText" />
+            <conv:HealthScoreToBrushConverter x:Key="HealthToBrush" />
+            <conv:DiskPercentToBrushConverter x:Key="DiskPctToBrush" />
+            <conv:HexToBrushConverter x:Key="HexToBrush" />
+
+            <!-- Crisp Unified Lucide/shadcn SVG Geometries (Zero emoji font drift) -->
+            <Geometry x:Key="GeoZap">M13,2 L4,14 H11 L10,22 L19,10 H12 Z</Geometry>
+            <Geometry x:Key="GeoShield">M12,2 L4,5 V11 C4,16.5 7.4,21.5 12,23 C16.6,21.5 20,16.5 20,11 V5 Z</Geometry>
+            <Geometry x:Key="GeoPin">M12,17 V22 M9,3 H15 L14,10 L17,13 V15 H7 V13 L10,10 Z</Geometry>
+            <Geometry x:Key="GeoFolder">M2,5 A2,2 0 0 1 4,3 H9 L11,5 H20 A2,2 0 0 1 22,7 V19 A2,2 0 0 1 20,21 H4 A2,2 0 0 1 2,19 Z</Geometry>
+            <Geometry x:Key="GeoSearch">M11,3 A8,8 0 1 0 19,11 A8,8 0 1 0 11,3 Z M21,21 L16.65,16.65</Geometry>
+            <Geometry x:Key="GeoTrash">M3,6 H21 M8,6 V4 H16 V6 M19,6 L18,20 A2,2 0 0 1 16,22 H8 A2,2 0 0 1 6,20 L5,6</Geometry>
+            <Geometry x:Key="GeoCheck">M20,6 L9,17 L4,12</Geometry>
+            <Geometry x:Key="GeoRefresh">M21,12 A9,9 0 1 1 18.3,5.6 L21,8 M21,3 V8 H16</Geometry>
+            <Geometry x:Key="GeoLock">M7,11 V7 A5,5 0 0 1 17,7 V11 M5,11 H19 V21 H5 Z</Geometry>
+            <Geometry x:Key="GeoSliders">M4,21 V14 M4,10 V3 M12,21 V12 M12,8 V3 M20,21 V16 M20,12 V3 M1,14 H7 M9,8 H15 M17,16 H23</Geometry>
+            <Geometry x:Key="GeoCpu">M4,4 H20 V20 H4 Z M8,8 H16 V16 H8 Z M9,1 V4 M15,1 V4 M9,20 V23 M15,20 V23 M1,9 H4 M1,15 H4 M20,9 H23 M20,15 H23</Geometry>
+            <Geometry x:Key="GeoActivity">M22,12 H18 L15,21 L9,3 L6,12 H2</Geometry>
+            <Geometry x:Key="GeoHistory">M12,8 V12 L15,14 M12,2 A10,10 0 1 0 22,12 A10,10 0 1 0 12,2 Z</Geometry>
+            <Geometry x:Key="GeoGamepad">M6,9 H18 A4,4 0 0 1 22,13 V16 A3,3 0 0 1 17,18 L15,16 H9 L7,18 A3,3 0 0 1 2,16 V13 A4,4 0 0 1 6,9 Z</Geometry>
+            <Geometry x:Key="GeoBan">M12,2 A10,10 0 1 0 22,12 A10,10 0 1 0 12,2 Z M4.9,4.9 L19.1,19.1</Geometry>
+            <Geometry x:Key="GeoGlobe">M12,2 A10,10 0 1 0 22,12 A10,10 0 1 0 12,2 Z M2,12 H22 M12,2 A15,15 0 0 1 15,12 A15,15 0 0 1 12,22 A15,15 0 0 1 9,12 A15,15 0 0 1 12,2 Z</Geometry>
+
+            <!-- Unified Vector Icon Style -->
+            <Style x:Key="ShadcnIconPath" TargetType="Path">
+                <Setter Property="Width" Value="13.5" />
+                <Setter Property="Height" Value="13.5" />
+                <Setter Property="Stretch" Value="Uniform" />
+                <Setter Property="StrokeThickness" Value="1.9" />
+                <Setter Property="StrokeStartLineCap" Value="Round" />
+                <Setter Property="StrokeEndLineCap" Value="Round" />
+                <Setter Property="StrokeLineJoin" Value="Round" />
+                <Setter Property="VerticalAlignment" Value="Center" />
+            </Style>
+
+            <!-- shadcn/ui Pulse Skeleton Placeholder Style -->
+            <Style x:Key="ShadcnSkeletonBar" TargetType="Border">
+                <Setter Property="Background" Value="#18181B" />
+                <Setter Property="BorderBrush" Value="#27272A" />
+                <Setter Property="BorderThickness" Value="1" />
+                <Setter Property="CornerRadius" Value="6" />
+                <Style.Triggers>
+                    <Trigger Property="IsVisible" Value="True">
+                        <Trigger.EnterActions>
+                            <BeginStoryboard>
+                                <Storyboard RepeatBehavior="Forever" AutoReverse="True">
+                                    <DoubleAnimation Storyboard.TargetProperty="Opacity" From="0.45" To="0.95" Duration="0:0:0.85" />
+                                </Storyboard>
+                            </BeginStoryboard>
+                        </Trigger.EnterActions>
+                    </Trigger>
+                </Style.Triggers>
+            </Style>
+
+            <!-- shadcn/ui Quick Filter Chip Style -->
+            <Style x:Key="ShadcnFilterChip" TargetType="RadioButton">
+                <Setter Property="Foreground" Value="#A1A1AA" />
+                <Setter Property="FontSize" Value="11.5" />
+                <Setter Property="FontWeight" Value="Medium" />
+                <Setter Property="Padding" Value="10,4" />
+                <Setter Property="Margin" Value="0,0,6,0" />
+                <Setter Property="Cursor" Value="Hand" />
+                <Setter Property="GroupName" Value="ProcCatFilter" />
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="RadioButton">
+                            <Border x:Name="Bd" Background="#18181B" BorderBrush="#27272A" BorderThickness="1"
+                                    CornerRadius="999" Padding="{TemplateBinding Padding}">
+                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter TargetName="Bd" Property="BorderBrush" Value="#3F3F46" />
+                                    <Setter Property="Foreground" Value="#FAFAFA" />
+                                </Trigger>
+                                <Trigger Property="IsChecked" Value="True">
+                                    <Setter TargetName="Bd" Property="Background" Value="#FAFAFA" />
+                                    <Setter TargetName="Bd" Property="BorderBrush" Value="#FAFAFA" />
+                                    <Setter Property="Foreground" Value="#09090B" />
+                                    <Setter Property="FontWeight" Value="SemiBold" />
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
+            <!-- shadcn/ui Zinc Dark Primary Button (#FAFAFA bg / #09090B text) -->
+            <Style x:Key="ShadcnPrimaryBtn" TargetType="Button">
+                <Setter Property="Background" Value="#FAFAFA" />
+                <Setter Property="Foreground" Value="#09090B" />
+                <Setter Property="FontSize" Value="12.5" />
+                <Setter Property="FontWeight" Value="SemiBold" />
+                <Setter Property="Padding" Value="14,7" />
+                <Setter Property="Cursor" Value="Hand" />
+                <Setter Property="BorderThickness" Value="0" />
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Button">
+                            <Border x:Name="Bd" Background="{TemplateBinding Background}" CornerRadius="6" Padding="{TemplateBinding Padding}">
+                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter TargetName="Bd" Property="Background" Value="#E4E4E7" />
+                                </Trigger>
+                                <Trigger Property="IsPressed" Value="True">
+                                    <Setter TargetName="Bd" Property="Background" Value="#D4D4D8" />
+                                </Trigger>
+                                <Trigger Property="IsEnabled" Value="False">
+                                    <Setter TargetName="Bd" Property="Opacity" Value="0.5" />
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
+            <!-- shadcn/ui Zinc Dark Secondary Button (#18181B bg / #27272A border / #FAFAFA text) -->
+            <Style x:Key="ShadcnSecondaryBtn" TargetType="Button">
+                <Setter Property="Background" Value="#18181B" />
+                <Setter Property="Foreground" Value="#FAFAFA" />
+                <Setter Property="BorderBrush" Value="#27272A" />
+                <Setter Property="BorderThickness" Value="1" />
+                <Setter Property="FontSize" Value="12.5" />
+                <Setter Property="FontWeight" Value="Medium" />
+                <Setter Property="Padding" Value="12,7" />
+                <Setter Property="Cursor" Value="Hand" />
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Button">
+                            <Border x:Name="Bd" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                                    BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="6" Padding="{TemplateBinding Padding}">
+                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter TargetName="Bd" Property="Background" Value="#27272A" />
+                                    <Setter TargetName="Bd" Property="BorderBrush" Value="#3F3F46" />
+                                </Trigger>
+                                <Trigger Property="IsPressed" Value="True">
+                                    <Setter TargetName="Bd" Property="Background" Value="#3F3F46" />
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
+            <!-- shadcn/ui Zinc Dark Danger Button (#3F1518 bg / #FCA5A5 text) -->
+            <Style x:Key="ShadcnDangerBtn" TargetType="Button">
+                <Setter Property="Background" Value="#3F1518" />
+                <Setter Property="Foreground" Value="#FCA5A5" />
+                <Setter Property="BorderBrush" Value="#7F1D1D" />
+                <Setter Property="BorderThickness" Value="1" />
+                <Setter Property="FontSize" Value="12.5" />
+                <Setter Property="FontWeight" Value="SemiBold" />
+                <Setter Property="Padding" Value="14,7" />
+                <Setter Property="Cursor" Value="Hand" />
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Button">
+                            <Border x:Name="Bd" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                                    BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="6" Padding="{TemplateBinding Padding}">
+                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter TargetName="Bd" Property="Background" Value="#5C1D22" />
+                                    <Setter TargetName="Bd" Property="BorderBrush" Value="#991B1B" />
+                                </Trigger>
+                                <Trigger Property="IsPressed" Value="True">
+                                    <Setter TargetName="Bd" Property="Background" Value="#7F1D1D" />
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
+            <!-- shadcn/ui Zinc Dark Emerald Button -->
+            <Style x:Key="ShadcnEmeraldBtn" TargetType="Button">
+                <Setter Property="Background" Value="#052E16" />
+                <Setter Property="Foreground" Value="#86EFAC" />
+                <Setter Property="BorderBrush" Value="#166534" />
+                <Setter Property="BorderThickness" Value="1" />
+                <Setter Property="FontSize" Value="12.5" />
+                <Setter Property="FontWeight" Value="SemiBold" />
+                <Setter Property="Padding" Value="14,7" />
+                <Setter Property="Cursor" Value="Hand" />
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Button">
+                            <Border x:Name="Bd" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                                    BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="6" Padding="{TemplateBinding Padding}">
+                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter TargetName="Bd" Property="Background" Value="#14532D" />
+                                    <Setter TargetName="Bd" Property="BorderBrush" Value="#22C55E" />
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
+            <!-- shadcn/ui Custom Modern CheckBox -->
+            <Style x:Key="ShadcnCheckBox" TargetType="CheckBox">
+                <Setter Property="Cursor" Value="Hand" />
+                <Setter Property="Foreground" Value="#A1A1AA" />
+                <Setter Property="FontSize" Value="12" />
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="CheckBox">
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                <Border x:Name="Box" Width="16" Height="16" CornerRadius="4" Background="#18181B"
+                                        BorderBrush="#3F3F46" BorderThickness="1.2" VerticalAlignment="Center">
+                                    <Path x:Name="CheckMark" Data="M 3,8 L 6.5,11.5 L 13,4.5" Stroke="#09090B" StrokeThickness="2"
+                                          StrokeStartLineCap="Round" StrokeEndLineCap="Round" Visibility="Collapsed" />
+                                </Border>
+                                <ContentPresenter Margin="6,0,0,0" VerticalAlignment="Center" />
+                            </StackPanel>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter TargetName="Box" Property="BorderBrush" Value="#71717A" />
+                                </Trigger>
+                                <Trigger Property="IsChecked" Value="True">
+                                    <Setter TargetName="Box" Property="Background" Value="#FAFAFA" />
+                                    <Setter TargetName="Box" Property="BorderBrush" Value="#FAFAFA" />
+                                    <Setter TargetName="CheckMark" Property="Visibility" Value="Visible" />
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
+            <!-- shadcn/ui Segmented Tab Style -->
+            <Style x:Key="ShadcnSegmentedTab" TargetType="RadioButton">
+                <Setter Property="Foreground" Value="#A1A1AA" />
+                <Setter Property="FontSize" Value="12.5" />
+                <Setter Property="FontWeight" Value="Medium" />
+                <Setter Property="Padding" Value="14,6" />
+                <Setter Property="Cursor" Value="Hand" />
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="RadioButton">
+                            <Border x:Name="Bd" Background="Transparent" CornerRadius="6" Padding="{TemplateBinding Padding}">
+                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter Property="Foreground" Value="#E4E4E7" />
+                                </Trigger>
+                                <Trigger Property="IsChecked" Value="True">
+                                    <Setter TargetName="Bd" Property="Background" Value="#09090B" />
+                                    <Setter Property="Foreground" Value="#FAFAFA" />
+                                    <Setter Property="FontWeight" Value="SemiBold" />
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
+            <!-- shadcn/ui Rounded Pill ProgressBar -->
+            <Style TargetType="ProgressBar">
+                <Setter Property="Background" Value="#27272A" />
+                <Setter Property="Foreground" Value="#38BDF8" />
+                <Setter Property="BorderThickness" Value="0" />
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="ProgressBar">
+                            <Grid x:Name="TemplateRoot">
+                                <Border Background="{TemplateBinding Background}" CornerRadius="999" />
+                                <Border x:Name="PART_Track" CornerRadius="999" ClipToBounds="True">
+                                    <Border x:Name="PART_Indicator" HorizontalAlignment="Left" Background="{TemplateBinding Foreground}" CornerRadius="999" />
+                                </Border>
+                            </Grid>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+        </ResourceDictionary>
+    </Application.Resources>
+</Application>
