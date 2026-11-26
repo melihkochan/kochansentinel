@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
-using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -18,6 +17,7 @@ public partial class MainViewModel
     private readonly DisplayAndColorService _displayService = new();
     private readonly ServiceAndBloatAuditService _serviceAudit = new();
     private CancellationTokenSource? _driverCts;
+    private ColorProfilePreset _activeColorPreset = DisplayAndColorService.GetColorPresets()[0];
 
     // --- Driver Audit & Windows Update Drivers ---
     [ObservableProperty] private bool _isScanningDrivers;
@@ -28,8 +28,9 @@ public partial class MainViewModel
     // --- Monitor & Color Calibration ---
     [ObservableProperty] private MonitorDisplayInfo? _selectedMonitor;
     [ObservableProperty] private string _monitorSummaryText = "Bağlı monitörlerin Hz, çözünürlük, ICC profili ve renk önerileri taranıyor...";
-    [ObservableProperty] private int _monitorBrightnessValue = 70;
+    [ObservableProperty] private int _monitorBrightnessValue = 100;
     [ObservableProperty] private int _monitorContrastValue = 50;
+    [ObservableProperty] private string _brightnessControlModeText = "Ekran algılanıyor...";
     [ObservableProperty] private string _activeColorPresetName = "Varsayılan (Standart 6500K)";
     public ObservableCollection<MonitorDisplayInfo> Monitors { get; } = new();
     public ObservableCollection<ColorProfilePreset> ColorPresets { get; } = new();
@@ -40,15 +41,20 @@ public partial class MainViewModel
     public ObservableCollection<ServiceOptimizationItem> UnusedServices { get; } = new();
     public ObservableCollection<BloatProcessAuditItem> BloatAndRiskyProcesses { get; } = new();
 
-    // --- Curated Open-Source GitHub Optimization References ---
-    public ObservableCollection<OpenSourceToolReference> CuratedOpenSourceRepos { get; } = new();
-
     partial void OnSelectedMonitorChanged(MonitorDisplayInfo? value)
     {
-        if (value != null)
+        if (value == null) return;
+        if (value.SupportsDdcBrightness && value.CurrentBrightness >= 0)
         {
-            if (value.CurrentBrightness >= 0) MonitorBrightnessValue = value.CurrentBrightness;
-            if (value.CurrentContrast >= 0) MonitorContrastValue = value.CurrentContrast;
+            MonitorBrightnessValue = value.CurrentBrightness;
+            MonitorContrastValue = value.CurrentContrast >= 0 ? value.CurrentContrast : 50;
+            BrightnessControlModeText = "✓ DDC/CI Donanım Kontrolü Aktif (gerçek monitör parlaklığı)";
+        }
+        else
+        {
+            MonitorBrightnessValue = 100;
+            MonitorContrastValue = 50;
+            BrightnessControlModeText = "⚡ Yazılımsal Gama Modu Aktif (Monitör OSD'sinde DDC/CI kapalıysa otomatik devreye girer)";
         }
     }
 
@@ -56,8 +62,6 @@ public partial class MainViewModel
     {
         foreach (var preset in DisplayAndColorService.GetColorPresets())
             ColorPresets.Add(preset);
-        foreach (var repo in SystemTweaksAndRepairService.GetCuratedOpenSourceRepos())
-            CuratedOpenSourceRepos.Add(repo);
     }
 
     // --- Monitor & Color Commands ---
@@ -76,7 +80,7 @@ public partial class MainViewModel
             int hzIssues = list.Count(m => m.NeedsRefreshRateBoost);
             MonitorSummaryText = hzIssues > 0
                 ? $"DİKKAT: {list.Count} monitör bulundu — {hzIssues} monitör desteklediği maksimum Hz değerinin altında çalışıyor!"
-                : $"{list.Count} monitör analiz edildi — yenileme hızları optimum. Renk profillerini ve DDC/CI parlaklığı aşağıdan ayarlayabilirsin.";
+                : $"{list.Count} monitör analiz edildi — yenileme hızları optimum. Parlaklık, kontrast ve renk profillerini aşağıdan anlık ayarlayabilirsin.";
             StatusBanner = MonitorSummaryText;
         }
         catch (Exception ex)
@@ -100,22 +104,73 @@ public partial class MainViewModel
     private void ApplyColorPreset(ColorProfilePreset? preset)
     {
         if (preset == null) return;
+        _activeColorPreset = preset;
+        if (preset.Id == "default" && (SelectedMonitor == null || !SelectedMonitor.SupportsDdcBrightness))
+        {
+            MonitorBrightnessValue = 100;
+            MonitorContrastValue = 50;
+        }
+
         var (ok, msg) = _displayService.ApplyColorPreset(SelectedMonitor, preset);
         if (ok) ActiveColorPresetName = preset.Name;
         StatusBanner = msg;
         ShowToast(ok ? "Renk Profili Uygulandı" : "Renk Ayarı Uyarısı", msg, ok ? FindingSeverity.Info : FindingSeverity.Medium);
     }
 
-    public void ApplyMonitorHardwareBrightness(int percent)
+    public void ApplyMonitorBrightnessLive(int percent)
     {
-        if (SelectedMonitor == null || !SelectedMonitor.SupportsDdcBrightness) return;
-        _ = Task.Run(() => _displayService.SetHardwareBrightness(SelectedMonitor, percent));
+        var mon = SelectedMonitor;
+        _ = Task.Run(() =>
+        {
+            bool hwOk = mon != null && mon.SupportsDdcBrightness && _displayService.SetHardwareBrightness(mon, percent);
+            if (!hwOk)
+            {
+                var (swOk, swMsg) = _displayService.ApplySoftwareBrightnessContrast(mon, percent, MonitorContrastValue, _activeColorPreset);
+                System.Windows.Application.Current?.Dispatcher.Invoke(() =>
+                {
+                    BrightnessControlModeText = swOk
+                        ? $"⚡ Yazılımsal Gama Modu (Parlaklık %{percent} / Kontrast %{MonitorContrastValue})"
+                        : swMsg;
+                    StatusBanner = swMsg;
+                });
+            }
+            else
+            {
+                System.Windows.Application.Current?.Dispatcher.Invoke(() =>
+                {
+                    BrightnessControlModeText = $"✓ DDC/CI Donanım Parlaklığı: %{percent}";
+                    StatusBanner = $"Monitör donanımsal parlaklığı %{percent} yapıldı.";
+                });
+            }
+        });
     }
 
-    public void ApplyMonitorHardwareContrast(int percent)
+    public void ApplyMonitorContrastLive(int percent)
     {
-        if (SelectedMonitor == null || !SelectedMonitor.SupportsDdcBrightness) return;
-        _ = Task.Run(() => _displayService.SetHardwareContrast(SelectedMonitor, percent));
+        var mon = SelectedMonitor;
+        _ = Task.Run(() =>
+        {
+            bool hwOk = mon != null && mon.SupportsDdcBrightness && mon.CurrentContrast >= 0 && _displayService.SetHardwareContrast(mon, percent);
+            if (!hwOk)
+            {
+                var (swOk, swMsg) = _displayService.ApplySoftwareBrightnessContrast(mon, MonitorBrightnessValue, percent, _activeColorPreset);
+                System.Windows.Application.Current?.Dispatcher.Invoke(() =>
+                {
+                    BrightnessControlModeText = swOk
+                        ? $"⚡ Yazılımsal Gama Modu (Parlaklık %{MonitorBrightnessValue} / Kontrast %{percent})"
+                        : swMsg;
+                    StatusBanner = swMsg;
+                });
+            }
+            else
+            {
+                System.Windows.Application.Current?.Dispatcher.Invoke(() =>
+                {
+                    BrightnessControlModeText = $"✓ DDC/CI Donanım Kontrastı: %{percent}";
+                    StatusBanner = $"Monitör donanımsal kontrastı %{percent} yapıldı.";
+                });
+            }
+        });
     }
 
     [RelayCommand]
@@ -243,7 +298,7 @@ public partial class MainViewModel
     private async Task OptimizeAllSafeServicesAsync()
     {
         await EnsureAutoRestorePointAsync("Güvenli Servis Optimizasyonu");
-        var (count, msg) = await _serviceAudit.OptimizeAllSafeServicesAsync();
+        var (_, msg) = await _serviceAudit.OptimizeAllSafeServicesAsync();
         StatusBanner = msg;
         ShowToast("Servis Optimizasyonu", msg, FindingSeverity.Info);
         await ScanServicesAndBloatAsync();
@@ -282,31 +337,5 @@ public partial class MainViewModel
             StatusBanner = $"{item.ProcessName} (PID {item.Pid}) sonlandırıldı.";
             ShowToast("Süreç Kapatıldı", StatusBanner, FindingSeverity.Info);
         }
-    }
-
-    [RelayCommand]
-    private async Task ApplyAllRecommendedSpeedTweaksAsync()
-    {
-        await EnsureAutoRestorePointAsync("Toplu Hızlandırma (GitHub Tweaks)");
-        string[] safeIds = { "game_dvr", "net_throttle", "privacy_ad", "bing_search", "widgets_disable", "silent_bloat", "menu_speed", "ntfs_lastaccess", "mmcss_gaming" };
-        int applied = 0;
-        foreach (var t in SystemTweaks.Where(x => !x.IsApplied && safeIds.Contains(x.Id)).ToList())
-        {
-            var (ok, _) = _tweaksRepair.ToggleTweak(t.Id);
-            if (ok) applied++;
-        }
-        ReloadSystemTweaks();
-        StatusBanner = applied > 0
-            ? $"{applied} güvenli Windows 11 hızlandırma & debloat ayarı uygulandı (hepsi tek tıkla geri alınabilir)."
-            : "Önerilen tüm hızlandırma ayarları zaten aktif!";
-        ShowToast("Hızlandırma Paketi", StatusBanner, FindingSeverity.Info);
-    }
-
-    [RelayCommand]
-    private void OpenExternalUrl(string? url)
-    {
-        if (string.IsNullOrWhiteSpace(url)) return;
-        try { Process.Start(new ProcessStartInfo(url) { UseShellExecute = true }); }
-        catch { }
     }
 }

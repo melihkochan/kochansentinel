@@ -8,7 +8,7 @@
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
-        <!-- Top Segmented Studio Switcher -->
+        <!-- Top Segmented Studio Switcher (3 Clean Focused Tabs) -->
         <Border Grid.Row="0" Background="#111113" CornerRadius="8" Padding="10,8" Margin="0,0,0,10" BorderBrush="#27272A" BorderThickness="1">
             <Grid>
                 <Grid.ColumnDefinitions>
@@ -20,7 +20,6 @@
                         <RadioButton Content="Monitör &amp; Renk Kalibrasyonu" Style="{StaticResource ShadcnSegmentedTab}" GroupName="StudioSub" Tag="0" IsChecked="True" Checked="StudioSubTab_Checked" />
                         <RadioButton Content="Eksik Sürücüler &amp; Güncelleme" Style="{StaticResource ShadcnSegmentedTab}" GroupName="StudioSub" Tag="1" Checked="StudioSubTab_Checked" />
                         <RadioButton Content="Gereksiz Servis &amp; Süreçler" Style="{StaticResource ShadcnSegmentedTab}" GroupName="StudioSub" Tag="2" Checked="StudioSubTab_Checked" />
-                        <RadioButton Content="GitHub Hızlandırma Tweaks" Style="{StaticResource ShadcnSegmentedTab}" GroupName="StudioSub" Tag="3" Checked="StudioSubTab_Checked" />
                     </WrapPanel>
                 </Border>
                 <TextBlock Grid.Column="1" Text="Tüm değişiklikler geri alınabilir + Otomatik Yedek Sigortalı" Foreground="#71717A" FontSize="11"
@@ -38,7 +37,7 @@
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
                         <StackPanel Margin="0,0,14,0">
-                            <TextBlock Text="Monitör Yenileme Hızı (Hz), DDC/CI Parlaklık &amp; Renk Kalibrasyonu" FontSize="16.5" FontWeight="SemiBold" Foreground="#FAFAFA" />
+                            <TextBlock Text="Monitör Yenileme Hızı (Hz), Parlaklık &amp; Renk Kalibrasyonu" FontSize="16.5" FontWeight="SemiBold" Foreground="#FAFAFA" />
                             <TextBlock Text="{Binding MonitorSummaryText}" Foreground="#A1A1AA" FontSize="12" Margin="0,4,0,0" TextWrapping="Wrap" />
                         </StackPanel>
                         <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
@@ -47,7 +46,7 @@
                     </Grid>
                 </Border>
 
-                <!-- Detected Monitors Cards -->
+                <!-- Detected Monitors Cards (ALL Run bindings strictly Mode=OneWay!) -->
                 <ItemsControl ItemsSource="{Binding Monitors}" Margin="0,0,0,10">
                     <ItemsControl.ItemTemplate>
                         <DataTemplate>
@@ -64,19 +63,19 @@
                                         </Grid.ColumnDefinitions>
                                         <StackPanel>
                                             <StackPanel Orientation="Horizontal">
-                                                <TextBlock Text="{Binding FriendlyName}" Foreground="#FAFAFA" FontSize="14.5" FontWeight="SemiBold" />
+                                                <TextBlock Text="{Binding FriendlyName, Mode=OneWay}" Foreground="#FAFAFA" FontSize="14.5" FontWeight="SemiBold" />
                                                 <Border Background="#18181B" BorderBrush="#27272A" BorderThickness="1" CornerRadius="5" Padding="7,2" Margin="8,0,0,0" VerticalAlignment="Center">
-                                                    <TextBlock Text="{Binding RefreshStatusBadge}" Foreground="#38BDF8" FontSize="10.5" FontWeight="SemiBold" />
+                                                    <TextBlock Text="{Binding RefreshStatusBadge, Mode=OneWay}" Foreground="#38BDF8" FontSize="10.5" FontWeight="SemiBold" />
                                                 </Border>
                                             </StackPanel>
                                             <TextBlock Foreground="#A1A1AA" FontSize="12" Margin="0,4,0,0">
-                                                <Run Text="{Binding ResolutionSummary}" />
-                                                <Run Text="  •  Renk Derinliği: " /><Run Text="{Binding BitsPerPixel, StringFormat={}{0}-bit}" Foreground="#E4E4E7" />
-                                                <Run Text="  •  ICC: " /><Run Text="{Binding IccProfileName}" Foreground="#E4E4E7" />
+                                                <Run Text="{Binding ResolutionSummary, Mode=OneWay}" />
+                                                <Run Text="  •  Renk Derinliği: " /><Run Text="{Binding BitsPerPixel, Mode=OneWay, StringFormat={}{0}-bit}" Foreground="#E4E4E7" />
+                                                <Run Text="  •  ICC: " /><Run Text="{Binding IccProfileName, Mode=OneWay}" Foreground="#E4E4E7" />
                                             </TextBlock>
                                         </StackPanel>
                                         <Button Grid.Column="1" Content="⚡ Maksimum Hz'e Geç" Style="{StaticResource ShadcnEmeraldBtn}" VerticalAlignment="Center"
-                                                Visibility="{Binding NeedsRefreshRateBoost, Converter={StaticResource BoolToVis}}"
+                                                Visibility="{Binding NeedsRefreshRateBoost, Mode=OneWay, Converter={StaticResource BoolToVis}}"
                                                 Command="{Binding DataContext.BoostMonitorMaxRefreshRateCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
                                                 CommandParameter="{Binding}" />
                                     </Grid>
@@ -94,33 +93,35 @@
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
 
-                <!-- Split: Hardware DDC/CI Sliders + Live Color Presets -->
+                <!-- Split: Hardware/Gamma Brightness & Contrast + Live Color Presets -->
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="1*" />
                         <ColumnDefinition Width="1.45*" />
                     </Grid.ColumnDefinitions>
 
-                    <!-- Left: Hardware Brightness/Contrast & Windows Tools -->
+                    <!-- Left: Brightness/Contrast & Windows Tools -->
                     <StackPanel Grid.Column="0" Margin="0,0,8,0">
                         <Border Background="#111113" CornerRadius="8" Padding="15" Margin="0,0,0,10" BorderBrush="#27272A" BorderThickness="1">
                             <StackPanel>
-                                <TextBlock Text="Donanımsal Parlaklık &amp; Kontrast (DDC/CI)" FontSize="14" FontWeight="SemiBold" Foreground="#FAFAFA" Margin="0,0,0,6" />
-                                <TextBlock Text="Harici masaüstü ve laptop ekranlarının gerçek panel parlaklığını anlık değiştirir." Foreground="#71717A" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,10" />
+                                <TextBlock Text="Canlı Parlaklık &amp; Kontrast Kontrolü" FontSize="14" FontWeight="SemiBold" Foreground="#FAFAFA" Margin="0,0,0,4" />
+                                <TextBlock Text="{Binding BrightnessControlModeText}" Foreground="#38BDF8" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,10" />
 
                                 <DockPanel Margin="0,0,0,4">
                                     <TextBlock Text="Parlaklık (Brightness):" Foreground="#D4D4D8" FontSize="12" />
                                     <TextBlock Text="{Binding MonitorBrightnessValue, StringFormat={}%{0}}" Foreground="#FBBF24" FontWeight="Bold" FontSize="12" DockPanel.Dock="Right" HorizontalAlignment="Right" />
                                 </DockPanel>
-                                <Slider Minimum="10" Maximum="100" Value="{Binding MonitorBrightnessValue, Mode=TwoWay}"
-                                        LostMouseCapture="BrightnessSlider_LostCapture" Margin="0,0,0,10" />
+                                <Slider x:Name="BrightnessSlider" Minimum="20" Maximum="100" IsMoveToPointEnabled="True"
+                                        Value="{Binding MonitorBrightnessValue, Mode=TwoWay}"
+                                        ValueChanged="BrightnessSlider_ValueChanged" Margin="0,0,0,10" />
 
                                 <DockPanel Margin="0,0,0,4">
-                                    <TextBlock Text="Kontrast (DDC/CI):" Foreground="#D4D4D8" FontSize="12" />
+                                    <TextBlock Text="Kontrast (Contrast):" Foreground="#D4D4D8" FontSize="12" />
                                     <TextBlock Text="{Binding MonitorContrastValue, StringFormat={}%{0}}" Foreground="#38BDF8" FontWeight="Bold" FontSize="12" DockPanel.Dock="Right" HorizontalAlignment="Right" />
                                 </DockPanel>
-                                <Slider Minimum="10" Maximum="100" Value="{Binding MonitorContrastValue, Mode=TwoWay}"
-                                        LostMouseCapture="ContrastSlider_LostCapture" />
+                                <Slider x:Name="ContrastSlider" Minimum="10" Maximum="100" IsMoveToPointEnabled="True"
+                                        Value="{Binding MonitorContrastValue, Mode=TwoWay}"
+                                        ValueChanged="ContrastSlider_ValueChanged" />
                             </StackPanel>
                         </Border>
 
@@ -144,7 +145,7 @@
                                 <StackPanel>
                                     <TextBlock Text="Tek Tıkla Canlı Renk &amp; Gama Profilleri" FontSize="14.5" FontWeight="SemiBold" Foreground="#FAFAFA" />
                                     <TextBlock Foreground="#A1A1AA" FontSize="11.5" Margin="0,2,0,0">
-                                        <Run Text="Aktif Profil: " /><Run Text="{Binding ActiveColorPresetName}" Foreground="#4ADE80" FontWeight="SemiBold" />
+                                        <Run Text="Aktif Profil: " /><Run Text="{Binding ActiveColorPresetName, Mode=OneWay}" Foreground="#4ADE80" FontWeight="SemiBold" />
                                     </TextBlock>
                                 </StackPanel>
                             </DockPanel>
@@ -158,8 +159,8 @@
                                                     <ColumnDefinition Width="Auto" />
                                                 </Grid.ColumnDefinitions>
                                                 <StackPanel Margin="0,0,10,0">
-                                                    <TextBlock Text="{Binding Name}" Foreground="#FAFAFA" FontSize="13" FontWeight="SemiBold" />
-                                                    <TextBlock Text="{Binding Description}" Foreground="#A1A1AA" FontSize="11.5" TextWrapping="Wrap" Margin="0,2,0,0" />
+                                                    <TextBlock Text="{Binding Name, Mode=OneWay}" Foreground="#FAFAFA" FontSize="13" FontWeight="SemiBold" />
+                                                    <TextBlock Text="{Binding Description, Mode=OneWay}" Foreground="#A1A1AA" FontSize="11.5" TextWrapping="Wrap" Margin="0,2,0,0" />
                                                 </StackPanel>
                                                 <Button Grid.Column="1" Content="Uygula" Style="{StaticResource ShadcnPrimaryBtn}" VerticalAlignment="Center" Padding="12,5"
                                                         Command="{Binding DataContext.ApplyColorPresetCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
@@ -357,93 +358,6 @@
                             </DataGridTemplateColumn>
                         </DataGrid.Columns>
                     </DataGrid>
-                </DockPanel>
-            </Border>
-        </Grid>
-
-        <!-- SUB-PANEL 3: GITHUB COMMUNITY SPEED TWEAKS & CURATED REPOS -->
-        <Grid x:Name="PanelGithubTweaks" Grid.Row="1" Visibility="Collapsed">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="1.35*" />
-                <ColumnDefinition Width="1*" />
-            </Grid.ColumnDefinitions>
-
-            <!-- Left: Built-in Native Reversible Tweaks (WinUtil / Win11Debloat / Sophia) -->
-            <Border Grid.Column="0" Background="#111113" CornerRadius="8" Padding="15" Margin="0,0,8,0" BorderBrush="#27272A" BorderThickness="1">
-                <DockPanel>
-                    <DockPanel DockPanel.Dock="Top" Margin="0,0,0,10">
-                        <StackPanel>
-                            <TextBlock Text="Açık Kaynak Topluluk Hızlandırmaları (Yerel &amp; Geri Alınabilir)" FontSize="15.5" FontWeight="SemiBold" Foreground="#FAFAFA" />
-                            <TextBlock Text="WinUtil, Win11Debloat ve Sophia Script'teki en güvenli, sistem bozmayan hızlandırmalar doğrudan yerel C# olarak entegre edildi." Foreground="#A1A1AA" FontSize="11.5" TextWrapping="Wrap" Margin="0,2,0,0" />
-                        </StackPanel>
-                        <Button Content="⚡ Önerilenleri Uygula" Style="{StaticResource ShadcnEmeraldBtn}" DockPanel.Dock="Right" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="10,0,0,0"
-                                Command="{Binding ApplyAllRecommendedSpeedTweaksCommand}" />
-                    </DockPanel>
-
-                    <ListBox ItemsSource="{Binding SystemTweaks}" Background="Transparent" BorderThickness="0" ScrollViewer.HorizontalScrollBarVisibility="Disabled" HorizontalContentAlignment="Stretch">
-                        <ListBox.ItemTemplate>
-                            <DataTemplate>
-                                <Border Background="#18181B" CornerRadius="7" Padding="11" Margin="0,3" BorderBrush="#27272A" BorderThickness="1">
-                                    <Grid>
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="*" />
-                                            <ColumnDefinition Width="Auto" />
-                                        </Grid.ColumnDefinitions>
-                                        <StackPanel Margin="0,0,10,0">
-                                            <StackPanel Orientation="Horizontal" Margin="0,0,0,3">
-                                                <Border Background="#27272A" CornerRadius="4" Padding="6,1" Margin="0,0,8,0">
-                                                    <TextBlock Text="{Binding Category}" Foreground="#D4D4D8" FontSize="9.5" FontWeight="SemiBold" />
-                                                </Border>
-                                                <TextBlock Text="{Binding StatusBadge}" Foreground="#38BDF8" FontSize="11" FontWeight="SemiBold" VerticalAlignment="Center" />
-                                            </StackPanel>
-                                            <TextBlock Text="{Binding Name}" Foreground="#FAFAFA" FontSize="13" FontWeight="SemiBold" />
-                                            <TextBlock Text="{Binding Description}" Foreground="#A1A1AA" FontSize="11" TextWrapping="Wrap" Margin="0,2,0,0" />
-                                        </StackPanel>
-                                        <Button Grid.Column="1" Content="{Binding ActionText}" Style="{StaticResource ShadcnSecondaryBtn}" VerticalAlignment="Center"
-                                                Command="{Binding DataContext.ToggleTweakCommand, RelativeSource={RelativeSource AncestorType=ListBox}}"
-                                                CommandParameter="{Binding}" />
-                                    </Grid>
-                                </Border>
-                            </DataTemplate>
-                        </ListBox.ItemTemplate>
-                    </ListBox>
-                </DockPanel>
-            </Border>
-
-            <!-- Right: Curated Reputable GitHub Repositories -->
-            <Border Grid.Column="1" Background="#111113" CornerRadius="8" Padding="15" BorderBrush="#27272A" BorderThickness="1">
-                <DockPanel>
-                    <StackPanel DockPanel.Dock="Top" Margin="0,0,0,10">
-                        <TextBlock Text="Doğrulanmış Açık Kaynak GitHub Repoları" FontSize="15" FontWeight="SemiBold" Foreground="#FAFAFA" />
-                        <TextBlock Text="İleri seviye debloat, NVIDIA sRGB gamut kilitleme ve donanımsal ekran kontrolü için topluluğun en güvenilir açık kaynak projeleri." Foreground="#A1A1AA" FontSize="11.5" TextWrapping="Wrap" Margin="0,2,0,0" />
-                    </StackPanel>
-                    <ListBox ItemsSource="{Binding CuratedOpenSourceRepos}" Background="Transparent" BorderThickness="0" ScrollViewer.HorizontalScrollBarVisibility="Disabled" HorizontalContentAlignment="Stretch">
-                        <ListBox.ItemTemplate>
-                            <DataTemplate>
-                                <Border Background="#18181B" CornerRadius="7" Padding="11" Margin="0,3" BorderBrush="#27272A" BorderThickness="1">
-                                    <Grid>
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="*" />
-                                            <ColumnDefinition Width="Auto" />
-                                        </Grid.ColumnDefinitions>
-                                        <StackPanel Margin="0,0,10,0">
-                                            <StackPanel Orientation="Horizontal">
-                                                <TextBlock Text="{Binding Name}" Foreground="#FAFAFA" FontSize="13" FontWeight="SemiBold" />
-                                                <Border Background="#0C1E2E" BorderBrush="#1E3A8A" BorderThickness="1" CornerRadius="4" Padding="6,1" Margin="8,0,0,0" VerticalAlignment="Center">
-                                                    <TextBlock Text="{Binding Category}" Foreground="#93C5FD" FontSize="9.5" FontWeight="SemiBold" />
-                                                </Border>
-                                            </StackPanel>
-                                            <TextBlock Text="{Binding RepoSlug}" Foreground="#38BDF8" FontSize="10.5" Margin="0,2,0,3" />
-                                            <TextBlock Text="{Binding Description}" Foreground="#A1A1AA" FontSize="11" TextWrapping="Wrap" />
-                                        </StackPanel>
-                                        <Button Grid.Column="1" Content="GitHub" Style="{StaticResource ShadcnSecondaryBtn}" VerticalAlignment="Center" Padding="10,4"
-                                                Command="{Binding DataContext.OpenExternalUrlCommand, RelativeSource={RelativeSource AncestorType=ListBox}}"
-                                                CommandParameter="{Binding Url}" />
-                                    </Grid>
-                                </Border>
-                            </DataTemplate>
-                        </ListBox.ItemTemplate>
-                    </ListBox>
                 </DockPanel>
             </Border>
         </Grid>

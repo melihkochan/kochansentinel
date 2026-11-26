@@ -28,11 +28,10 @@ Windows 10/11 (.NET 8 / WPF) için geliştirilmiş sistem telemetrisi, donanım 
 - **Paralel Disk Analizi (TreeSize & Treemap), Duplicate Finder & Termal Benchmark**
   - Çok çekirdekli paralel klasör taraması, interaktif Treemap, en büyük dosyalar ve 3 aşamalı **SHA-256 Yinelenen Dosya Bulucu**.
   - Gerçek donanım benchmark testleri (`SHA-256` CPU, RAM bant genişliği/gecikme, 3D SIMD/Vektör hesaplama, `FILE_FLAG_NO_BUFFERING` NVMe 4K IOPS) + canlı **Termal Throttling Tespiti**.
-- **Ekran, Sürücü, Servis & GitHub Hızlandırma Stüdyosu**
-  - Bağlı monitörlerde yenileme hızı (Hz) uyarısı + tek tıkla maksimum Hz'e geçiş, DDC/CI donanımsal parlaklık/kontrast, anlık geri alınabilir renk/gama profilleri (FPS Netlik, sRGB Tasarım, Sinema, Gece Göz Koruma) ve ICC/GPU renk önerileri.
+- **Ekran, Sürücü & Servis Stüdyosu**
+  - Bağlı monitörlerde yenileme hızı (Hz) uyarısı + tek tıkla maksimum Hz'e geçiş, donanımsal DDC/CI + yazılımsal Gamma parlaklık/kontrast kontrolü, anlık geri alınabilir renk/gama profilleri (FPS Netlik, sRGB Tasarım, Sinema, Gece Göz Koruma) ve ICC/GPU renk önerileri.
   - Aygıt Yöneticisi eksik/hatalı donanım denetimi, eski sürücü tespiti ve resmi Windows Update WHQL sürücü kurulumu.
   - Kullanılmayan telemetri/arka plan Windows servisleri için güvenli tek tıkla optimizasyon + arka plan gereksiz/riskli süreç denetimi.
-  - `WinUtil`, `Win11Debloat` ve `Sophia Script` kaynaklı güvenli, geri alınabilir Windows 11 hızlandırma tweaks paketi.
 - **Güvenlik, Akışlı Karantina & Aktif Savunma**
   - Gerçek zamanlı dosya kalkanı (SHA-256, Shannon Entropi, imza doğrulama, VirusTotal/MalwareBazaar Auth-Key, Defender) ve DPAPI şifreli API/Webhook saklama.
   - Büyük dosyaları belleği tüketmeden şifreleyen akışlı (chunked) **AES-256-GCM + DPAPI Karantina Kasası**.

@@ -359,6 +359,66 @@ public sealed class DisplayAndColorService
         }
     }
 
+    /// <summary>
+    /// Smooth software Gamma LUT fallback for monitors where DDC/CI is disabled in OSD.
+    /// brightnessPct: 10..100 (100 = full native brightness), contrastPct: 10..100 (50 = neutral).
+    /// </summary>
+    public (bool Ok, string Message) ApplySoftwareBrightnessContrast(
+        MonitorDisplayInfo? monitor,
+        int brightnessPct,
+        int contrastPct,
+        ColorProfilePreset? basePreset = null)
+    {
+        try
+        {
+            string device = monitor?.DeviceName ?? @"\\.\DISPLAY1";
+            IntPtr hdc = CreateDCW(null, device, null, IntPtr.Zero);
+            if (hdc == IntPtr.Zero)
+                return (false, "Ekran renk bağlamı (HDC) açılamadı.");
+
+            try
+            {
+                var p = basePreset ?? GetColorPresets()[0];
+                double bScale = Math.Clamp(brightnessPct / 100.0, 0.20, 1.0);
+                // contrastPct: 50 -> 1.0 (neutral), 10 -> 0.65 (softer), 100 -> 1.38 (punchier)
+                double cFactor = 1.0 + ((Math.Clamp(contrastPct, 10, 100) - 50.0) / 50.0) * 0.35;
+                double invGamma = p.Gamma > 0.2 ? (1.0 / p.Gamma) : 1.0;
+
+                var ramp = new RAMP
+                {
+                    Red = new ushort[256],
+                    Green = new ushort[256],
+                    Blue = new ushort[256]
+                };
+
+                for (int i = 0; i < 256; i++)
+                {
+                    double norm = i / 255.0;
+                    double v = i == 0 ? 0.0 : Math.Pow(norm, invGamma) + p.BrightnessLift * (1.0 - norm) * norm * 4.0;
+                    v = ((v - 0.5) * cFactor) + 0.5;
+                    v = Math.Clamp(v, 0.0, 1.0) * bScale;
+
+                    ramp.Red[i] = (ushort)Math.Clamp(Math.Round(v * p.RedScale * 65535.0), 0, 65535);
+                    ramp.Green[i] = (ushort)Math.Clamp(Math.Round(v * p.GreenScale * 65535.0), 0, 65535);
+                    ramp.Blue[i] = (ushort)Math.Clamp(Math.Round(v * p.BlueScale * 65535.0), 0, 65535);
+                }
+
+                bool ok = SetDeviceGammaRamp(hdc, ref ramp);
+                return ok
+                    ? (true, $"Yazılımsal Gama: Parlaklık %{brightnessPct}, Kontrast %{contrastPct} uygulandı.")
+                    : (false, "Gama rampası uygulanamadı (Windows HDR açıkken sistem gama kontrolünü kilitler).");
+            }
+            finally
+            {
+                DeleteDC(hdc);
+            }
+        }
+        catch (Exception ex)
+        {
+            return (false, $"Parlaklık/Kontrast hatası: {ex.Message}");
+        }
+    }
+
     public bool SetHardwareBrightness(MonitorDisplayInfo monitor, int percent)
     {
         percent = Math.Clamp(percent, 0, 100);

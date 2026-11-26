@@ -41,8 +41,9 @@ public partial class App : System.Windows.Application
             return;
         }
 
-        // Clean up any leftover .old executable from a recent self-update
+        // Clean up any leftover .old executable from a recent self-update & cap oversized crash.log
         KochanSentinel.Core.Services.UpdateService.CleanupOldUpdateLeftovers();
+        TrimOversizedCrashLog();
 
         _singleInstanceMutex = new Mutex(true, "KochanSentinel_SingleInstance_Mutex", out bool createdNew);
         if (!createdNew)
@@ -226,13 +227,44 @@ public partial class App : System.Windows.Application
         };
     }
 
+    private static string _lastCrashSig = "";
+    private static DateTime _lastCrashUtc = DateTime.MinValue;
+    private static int _crashCountInWindow;
+
+    private static void TrimOversizedCrashLog()
+    {
+        try
+        {
+            var path = Path.Combine(ConfigDir, "crash.log");
+            if (File.Exists(path) && new FileInfo(path).Length > 2 * 1024 * 1024)
+                File.Delete(path);
+        }
+        catch { }
+    }
+
     public static void LogCrash(string source, Exception ex)
     {
         try
         {
-            var dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "KochanSentinel");
-            Directory.CreateDirectory(dir);
-            var path = Path.Combine(dir, "crash.log");
+            string sig = $"{source}|{ex.GetType().Name}|{ex.Message}";
+            var now = DateTime.UtcNow;
+            if (sig == _lastCrashSig && (now - _lastCrashUtc).TotalSeconds < 5)
+            {
+                _crashCountInWindow++;
+                if (_crashCountInWindow > 3) return; // Prevent infinite dispatcher loop from spamming disk
+            }
+            else
+            {
+                _lastCrashSig = sig;
+                _lastCrashUtc = now;
+                _crashCountInWindow = 1;
+            }
+
+            Directory.CreateDirectory(ConfigDir);
+            var path = Path.Combine(ConfigDir, "crash.log");
+            if (File.Exists(path) && new FileInfo(path).Length > 1024 * 1024)
+                File.WriteAllText(path, "[Log boyut sınırı aşıldığı için döndürüldü]\r\n");
+
             File.AppendAllText(path, $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] [{source}] {ex}\r\n\r\n");
         }
         catch { }
