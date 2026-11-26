@@ -358,9 +358,9 @@ public sealed class SecurityShieldService : IDisposable
             result.HeuristicFlags.Add("Çift uzantı hilesi tespit edildi!");
         }
 
-        // 3. Digital signature
+        // 3. Digital signature (covers PE binaries AND Authenticode-signed PowerShell scripts)
         var ext = Path.GetExtension(filePath).ToLowerInvariant();
-        if (ext is ".exe" or ".dll" or ".msi" or ".scr")
+        if (ext is ".exe" or ".dll" or ".msi" or ".scr" or ".ps1")
         {
             result.IsSigned = NativeMethods.VerifyFileOrCatalogSignature(filePath);
             if (result.IsSigned)
@@ -1255,8 +1255,14 @@ public sealed class SecurityShieldService : IDisposable
                         continue;
 
                     bool isHidden = (File.GetAttributes(file) & FileAttributes.Hidden) != 0;
-                    bool signed = (ext.Equals(".exe", StringComparison.OrdinalIgnoreCase) || ext.Equals(".msi", StringComparison.OrdinalIgnoreCase))
+                    bool signed = (ext.Equals(".exe", StringComparison.OrdinalIgnoreCase) ||
+                                   ext.Equals(".msi", StringComparison.OrdinalIgnoreCase) ||
+                                   ext.Equals(".ps1", StringComparison.OrdinalIgnoreCase))
                                   && NativeMethods.VerifyFileOrCatalogSignature(file);
+
+                    // Skip well-known signed or legitimate Microsoft Visual Studio / VC++ Temp installer leftovers
+                    if (!isHidden && (signed || IsBenignMicrosoftTempInstallerScript(file)))
+                        continue;
 
                     if (!signed || isHidden)
                     {
@@ -1397,6 +1403,22 @@ public sealed class SecurityShieldService : IDisposable
             return p?.ExitCode ?? -1;
         }
         catch { return -1; }
+    }
+
+    private static bool IsBenignMicrosoftTempInstallerScript(string filePath)
+    {
+        try
+        {
+            if (!filePath.EndsWith(".ps1", StringComparison.OrdinalIgnoreCase)) return false;
+            var name = Path.GetFileName(filePath);
+            bool knownName = name.Equals("Microsoft.VisualStudio.Setup.TestPowerShell.ps1", StringComparison.OrdinalIgnoreCase) ||
+                             name.Equals("VCRedistInstall.ps1", StringComparison.OrdinalIgnoreCase);
+            if (!knownName) return false;
+            // Confirm it actually contains a Microsoft Authenticode signature block
+            string tail = File.ReadAllText(filePath);
+            return tail.Contains("# SIG # Begin signature block", StringComparison.Ordinal);
+        }
+        catch { return false; }
     }
 
     private static bool IsSuspiciousPathOrCommand(string rawCommand, string exePath, bool isSigned)

@@ -138,6 +138,7 @@ public partial class MainViewModel
             new() { Title = "Başlangıç Yöneticisi & Boot Süresi", Subtitle = "PC açılış süresini gör ve başlangıç uygulamalarını yönet", Category = "Optimizasyon", ExecuteAction = () => { OnNavigateTabRequested?.Invoke(2); _ = ScanStartupAppsAsync(); } },
             new() { Title = "SFC /scannow Sistem Onarımı", Subtitle = "Bozuk Windows sistem dosyalarını tara ve onar", Category = "Onarım", ExecuteAction = () => { OnNavigateTabRequested?.Invoke(2); _ = RunSfcAsync(); } },
             new() { Title = "Geri Yükleme Noktası Oluştur", Subtitle = "Windows Sistem Geri Yükleme sigortası al", Category = "Yedek", ExecuteAction = () => _ = CreateRestorePointNowAsync() },
+            new() { Title = "Ekran, Sürücü & Servis Stüdyosu", Subtitle = "Monitör Hz/Renk kalibrasyonu, eksik sürücüler, servisler & GitHub tweaks", Category = "Stüdyo", Shortcut = "Yeni", ExecuteAction = () => OnNavigateTabRequested?.Invoke(8) },
             new() { Title = "Genel Bakış (Dashboard)", Subtitle = "Canlı telemetri, sağlık puanı ve sürücüler", Category = "Sayfa", ExecuteAction = () => OnNavigateTabRequested?.Invoke(0) },
             new() { Title = "Oyun Merkezi & Kütüphane", Subtitle = "Steam, Epic ve Riot oyunlarını doğrula & başlat", Category = "Sayfa", ExecuteAction = () => OnNavigateTabRequested?.Invoke(3) },
             new() { Title = "Ayarlar & Kalkan Yapılandırması", Subtitle = "Tema, kısayollar, API anahtarları, Discord Webhook", Category = "Sayfa", ExecuteAction = () => OnNavigateTabRequested?.Invoke(5) }

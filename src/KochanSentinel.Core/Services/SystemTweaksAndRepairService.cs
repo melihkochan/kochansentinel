@@ -105,9 +105,75 @@ public sealed class SystemTweaksAndRepairService
                 Name = "Windows Reklam Kimliği & Telemetri Azaltma",
                 Description = "Uygulamalar arası reklam izleme kimliğini kapatır ve Windows tanı verisi toplama seviyesini düşürür.",
                 IsApplied = IsPrivacyHardened()
+            },
+            new()
+            {
+                Id = "bing_search",
+                Category = "Win11Debloat",
+                Name = "Başlat Menüsü Bing Web Aramasını Kapat",
+                Description = "Başlat'ta arama yaparken Bing internet sonuçlarını ve arka plan web isteklerini kapatır; yerel aramayı anında hızlandırır.",
+                IsApplied = IsBingSearchDisabled()
+            },
+            new()
+            {
+                Id = "widgets_disable",
+                Category = "WinUtil",
+                Name = "Windows 11 Widgets & Haber Akışını Kapat",
+                Description = "Arka planda çalışan WebView2 Widget süreçlerini durdurarak ~150-300 MB RAM ve CPU tasarrufu sağlar.",
+                IsApplied = IsWidgetsDisabled()
+            },
+            new()
+            {
+                Id = "silent_bloat",
+                Category = "Win11Debloat",
+                Name = "Otomatik Bloatware & Öneri Yüklemelerini Engelle",
+                Description = "Windows'un arka planda sessizce sponsorlu/önerilen uygulamalar indirmesini ve Başlat önerilerini durdurur.",
+                IsApplied = IsSilentBloatBlocked()
+            },
+            new()
+            {
+                Id = "menu_speed",
+                Category = "Sophia / Hız",
+                Name = "Menü & Arayüz Gecikmesini Sıfırla (0ms)",
+                Description = "Windows menü açılış gecikmesini (MenuShowDelay) 400ms'den 20ms'ye düşürerek masaüstü hissiyatını serileştirir.",
+                IsApplied = IsMenuSpeedBoosted()
+            },
+            new()
+            {
+                Id = "ntfs_lastaccess",
+                Category = "WinUtil / SSD",
+                Name = "NTFS Son Erişim Damgasını Kapat (SSD Ömrü)",
+                Description = "Her dosya okunduğunda SSD'ye fazladan erişim tarihi yazılmasını durdurur; disk I/O yükünü azaltır.",
+                IsApplied = IsNtfsLastAccessDisabled()
+            },
+            new()
+            {
+                Id = "mmcss_gaming",
+                Category = "WinUtil / Oyun",
+                Name = "MMCSS Oyun Önceliği & Yanıt Hızı (SystemResponsiveness)",
+                Description = "Arka plan sistem ayrımını %20'den %10'a çekip oyunlara Yüksek GPU/CPU önceliği verir (frame-time kararlılığı).",
+                IsApplied = IsMmcssGamingApplied()
+            },
+            new()
+            {
+                Id = "classic_context",
+                Category = "Win11Debloat",
+                Name = "Klasik Hızlı Sağ Tık Menüsü (Windows 11)",
+                Description = "'Diğer seçenekleri göster' adımını kaldırarak tam sağ tık menüsünü anında açar (Explorer yenilenir).",
+                IsApplied = IsClassicContextMenuEnabled()
             }
         };
     }
+
+    public static List<OpenSourceToolReference> GetCuratedOpenSourceRepos() => new()
+    {
+        new() { Name = "Chris Titus Tech WinUtil", RepoSlug = "ChrisTitusTech/winutil", Category = "Sistem & Optimizasyon", Description = "Windows 11 debloat, güvenli servis optimizasyonu ve tek tıkla Winget kurulumlarının altın standardı." },
+        new() { Name = "Win11Debloat", RepoSlug = "Raphire/Win11Debloat", Category = "Debloat & Gizlilik", Description = "Gereksiz Windows uygulamalarını, Bing aramasını ve telemetriyi güvenle temizleyen açık kaynak araç." },
+        new() { Name = "Sophia Script / SophiApp", RepoSlug = "farag2/Sophia-Script-for-Windows", Category = "İleri Ayar", Description = "Windows 10/11 için yüzlerce belgelenmiş, geri alınabilir sistem ve gizlilik ayarı." },
+        new() { Name = "novideo_srgb", RepoSlug = "ledoge/novideo_srgb", Category = "Ekran & Renk (NVIDIA)", Description = "Geniş gamut monitörlerdeki aşırı doygun/neon renkleri donanımsal olarak doğru sRGB uzayına kilitler." },
+        new() { Name = "Monitorian", RepoSlug = "emoacht/Monitorian", Category = "Ekran & DDC/CI", Description = "Harici masaüstü monitörlerin donanımsal parlaklığını ve kontrastını DDC/CI ile kontrol eder." },
+        new() { Name = "μLumen (Lumen)", RepoSlug = "stephenmthomas/lumen", Category = "Renk Kalibrasyonu", Description = "5 bölgeli ton kontrolü, Kelvin renk sıcaklığı ve gerçek zamanlı LUT/Gama kalibrasyon aracı." }
+    };
 
     public (bool Ok, string Message) ToggleTweak(string id)
     {
@@ -157,6 +223,77 @@ public sealed class SystemTweaksAndRepairService
                     using var kTel = Registry.LocalMachine.CreateSubKey(@"SOFTWARE\Policies\Microsoft\Windows\DataCollection");
                     kTel.SetValue("AllowTelemetry", harden ? 1 : 3, RegistryValueKind.DWord);
                     return (true, harden ? "Reklam izleme kimliği kapatıldı ve telemetri azaltıldı." : "Gizlilik/Telemetri ayarları varsayılana döndürüldü.");
+                }
+                case "bing_search":
+                {
+                    bool disable = !IsBingSearchDisabled();
+                    using var key = Registry.CurrentUser.CreateSubKey(@"Software\Policies\Microsoft\Windows\Explorer");
+                    if (disable) key.SetValue("DisableSearchBoxSuggestions", 1, RegistryValueKind.DWord);
+                    else key.DeleteValue("DisableSearchBoxSuggestions", false);
+                    using var k2 = Registry.CurrentUser.CreateSubKey(@"Software\Microsoft\Windows\CurrentVersion\Search");
+                    k2.SetValue("BingSearchEnabled", disable ? 0 : 1, RegistryValueKind.DWord);
+                    return (true, disable ? "Başlat menüsü Bing web araması kapatıldı." : "Bing web araması varsayılana döndürüldü.");
+                }
+                case "widgets_disable":
+                {
+                    bool disable = !IsWidgetsDisabled();
+                    using var pol = Registry.LocalMachine.CreateSubKey(@"SOFTWARE\Policies\Microsoft\Dsh");
+                    pol.SetValue("AllowNewsAndInterests", disable ? 0 : 1, RegistryValueKind.DWord);
+                    using var adv = Registry.CurrentUser.CreateSubKey(@"Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced");
+                    adv.SetValue("TaskbarDa", disable ? 0 : 1, RegistryValueKind.DWord);
+                    return (true, disable ? "Windows 11 Widgets & Haber akışı kapatıldı." : "Windows 11 Widgets varsayılana döndürüldü.");
+                }
+                case "silent_bloat":
+                {
+                    bool block = !IsSilentBloatBlocked();
+                    using var cdm = Registry.CurrentUser.CreateSubKey(@"Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager");
+                    int v = block ? 0 : 1;
+                    cdm.SetValue("SilentInstalledAppsEnabled", v, RegistryValueKind.DWord);
+                    cdm.SetValue("SystemPaneSuggestionsEnabled", v, RegistryValueKind.DWord);
+                    cdm.SetValue("SubscribedContent-338388Enabled", v, RegistryValueKind.DWord);
+                    cdm.SetValue("SubscribedContent-338389Enabled", v, RegistryValueKind.DWord);
+                    return (true, block ? "Otomatik bloatware ve Başlat öneri yüklemeleri engellendi." : "Uygulama önerileri varsayılana döndürüldü.");
+                }
+                case "menu_speed":
+                {
+                    bool boost = !IsMenuSpeedBoosted();
+                    using var dk = Registry.CurrentUser.CreateSubKey(@"Control Panel\Desktop");
+                    dk.SetValue("MenuShowDelay", boost ? "20" : "400", RegistryValueKind.String);
+                    return (true, boost ? "Menü açılış gecikmesi 20ms'ye düşürüldü (oturum yenilendiğinde tam etkinleşir)." : "Menü gecikmesi varsayılana (400ms) döndürüldü.");
+                }
+                case "ntfs_lastaccess":
+                {
+                    bool disable = !IsNtfsLastAccessDisabled();
+                    using var fsKey = Registry.LocalMachine.CreateSubKey(@"SYSTEM\CurrentControlSet\Control\FileSystem");
+                    // 0x80000001 = System Managed Disabled
+                    fsKey.SetValue("NtfsDisableLastAccessUpdate", disable ? unchecked((int)0x80000001) : unchecked((int)0x80000002), RegistryValueKind.DWord);
+                    return (true, disable ? "NTFS Son Erişim Damgası kapatıldı (SSD yazma ömrü korundu)." : "NTFS Son Erişim varsayılana döndürüldü.");
+                }
+                case "mmcss_gaming":
+                {
+                    bool apply = !IsMmcssGamingApplied();
+                    using var sp = Registry.LocalMachine.CreateSubKey(@"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile");
+                    sp.SetValue("SystemResponsiveness", apply ? 10 : 20, RegistryValueKind.DWord);
+                    using var gm = Registry.LocalMachine.CreateSubKey(@"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile\Tasks\Games");
+                    gm.SetValue("GPU Priority", apply ? 8 : 2, RegistryValueKind.DWord);
+                    gm.SetValue("Priority", apply ? 6 : 2, RegistryValueKind.DWord);
+                    gm.SetValue("Scheduling Category", apply ? "High" : "Medium", RegistryValueKind.String);
+                    return (true, apply ? "MMCSS Oyun Önceliği & Sistem Yanıt Hızı uygulandı." : "MMCSS Oyun profili varsayılana döndürüldü.");
+                }
+                case "classic_context":
+                {
+                    bool enable = !IsClassicContextMenuEnabled();
+                    const string clsidPath = @"Software\Classes\CLSID\{86ca1aa0-34aa-4e8b-a509-50c905bae2a2}\InprocServer32";
+                    if (enable)
+                    {
+                        using var k = Registry.CurrentUser.CreateSubKey(clsidPath);
+                        k.SetValue("", "", RegistryValueKind.String);
+                    }
+                    else
+                    {
+                        Registry.CurrentUser.DeleteSubKeyTree(@"Software\Classes\CLSID\{86ca1aa0-34aa-4e8b-a509-50c905bae2a2}", throwOnMissingSubKey: false);
+                    }
+                    return (true, enable ? "Klasik hızlı sağ tık menüsü açıldı (Explorer yeniden başlatılınca etkinleşir)." : "Windows 11 modern sağ tık menüsüne dönüldü.");
                 }
             }
         }
@@ -269,6 +406,52 @@ public sealed class SystemTweaksAndRepairService
     private static bool IsPrivacyHardened()
     {
         try { return Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\AdvertisingInfo")?.GetValue("Enabled") is int v && v == 0; }
+        catch { return false; }
+    }
+
+    private static bool IsBingSearchDisabled()
+    {
+        try { return Registry.CurrentUser.OpenSubKey(@"Software\Policies\Microsoft\Windows\Explorer")?.GetValue("DisableSearchBoxSuggestions") is int v && v == 1; }
+        catch { return false; }
+    }
+
+    private static bool IsWidgetsDisabled()
+    {
+        try { return Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Policies\Microsoft\Dsh")?.GetValue("AllowNewsAndInterests") is int v && v == 0; }
+        catch { return false; }
+    }
+
+    private static bool IsSilentBloatBlocked()
+    {
+        try { return Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager")?.GetValue("SilentInstalledAppsEnabled") is int v && v == 0; }
+        catch { return false; }
+    }
+
+    private static bool IsMenuSpeedBoosted()
+    {
+        try { return int.TryParse(Registry.CurrentUser.OpenSubKey(@"Control Panel\Desktop")?.GetValue("MenuShowDelay")?.ToString(), out int ms) && ms <= 50; }
+        catch { return false; }
+    }
+
+    private static bool IsNtfsLastAccessDisabled()
+    {
+        try
+        {
+            var val = Registry.LocalMachine.OpenSubKey(@"SYSTEM\CurrentControlSet\Control\FileSystem")?.GetValue("NtfsDisableLastAccessUpdate");
+            return val is int iv && (iv == 1 || iv == unchecked((int)0x80000001));
+        }
+        catch { return false; }
+    }
+
+    private static bool IsMmcssGamingApplied()
+    {
+        try { return Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile\Tasks\Games")?.GetValue("GPU Priority") is int v && v >= 8; }
+        catch { return false; }
+    }
+
+    private static bool IsClassicContextMenuEnabled()
+    {
+        try { return Registry.CurrentUser.OpenSubKey(@"Software\Classes\CLSID\{86ca1aa0-34aa-4e8b-a509-50c905bae2a2}\InprocServer32") != null; }
         catch { return false; }
     }
 }

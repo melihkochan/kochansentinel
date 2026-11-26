@@ -206,6 +206,7 @@ public partial class MainWindow : FluentWindow
             case 5: NavRadioSettings.IsChecked = true; break;
             case 6: NavRadioBenchmark.IsChecked = true; break;
             case 7: NavRadioDisk.IsChecked = true; break;
+            case 8: NavRadioStudio.IsChecked = true; break;
         }
         _vm.SelectedNavIndex = idx;
         SwitchTab(idx);
@@ -382,6 +383,8 @@ public partial class MainWindow : FluentWindow
             TabBenchmark.Visibility = index == 6 ? Visibility.Visible : Visibility.Collapsed;
         if (TabDiskAnalyzer != null)
             TabDiskAnalyzer.Visibility = index == 7 ? Visibility.Visible : Visibility.Collapsed;
+        if (TabHardwareStudio != null)
+            TabHardwareStudio.Visibility = index == 8 ? Visibility.Visible : Visibility.Collapsed;
 
         FrameworkElement? active = index switch
         {
@@ -393,6 +396,7 @@ public partial class MainWindow : FluentWindow
             5 => TabSettings,
             6 => TabBenchmark,
             7 => TabDiskAnalyzer,
+            8 => TabHardwareStudio,
             _ => null
         };
         if (active != null && _uiInitialized)

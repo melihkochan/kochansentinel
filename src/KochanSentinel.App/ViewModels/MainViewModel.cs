@@ -269,6 +269,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         SyncRealtimeProtections();
         ReloadSystemTweaks();
         InitializeModernFeatures();
+        InitializeHardwareStudio();
 
         RefreshBenchmarkDrives();
         foreach (var b in _benchmark.LoadHistory())
@@ -315,6 +316,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
             _ = RunPersistenceAuditAsync();
         else if (value == 6 || value == 7)
             RefreshBenchmarkDrives();
+        else if (value == 8)
+        {
+            ReloadSystemTweaks();
+            if (Monitors.Count == 0)
+                _ = ScanMonitorsAsync();
+        }
     }
 
     private bool _isRefreshing;
@@ -2022,6 +2029,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
     public void Dispose()
     {
+        _driverCts?.Cancel();
         _updateCts?.Cancel();
         _dupCts?.Cancel();
         _repairCts?.Cancel();

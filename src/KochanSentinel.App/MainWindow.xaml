@@ -252,6 +252,14 @@
                                 <TextBlock Text="Sistem Benchmark" VerticalAlignment="Center" />
                             </StackPanel>
                         </RadioButton>
+                        <RadioButton x:Name="NavRadioStudio" Style="{StaticResource NavRadioStyle}" Tag="8" Checked="NavRadio_Checked">
+                            <StackPanel Orientation="Horizontal">
+                                <Path Data="M2,4 H22 V16 H2 Z M8,20 H16 M12,16 V20"
+                                      Width="15" Height="15" Stretch="Uniform" VerticalAlignment="Center" Margin="0,0,11,0"
+                                      Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}" StrokeThickness="1.8" />
+                                <TextBlock Text="Ekran, Sürücü &amp; Servis" VerticalAlignment="Center" />
+                            </StackPanel>
+                        </RadioButton>
 
                         <TextBlock Text="SİSTEM &amp; KORUMA" Style="{StaticResource NavCategoryStyle}" />
                         <RadioButton x:Name="NavRadioSecurity" Style="{StaticResource NavRadioStyle}" Tag="4" Checked="NavRadio_Checked">
@@ -2739,6 +2747,9 @@
                         </Grid>
                     </Border>
                 </Grid>
+
+                <!-- TAB 8: HARDWARE, MONITOR COLOR, DRIVERS, SERVICES & GITHUB TWEAKS STUDIO -->
+                <views:HardwareStudioView x:Name="TabHardwareStudio" Visibility="Collapsed" />
 
                 <!-- Floating Bottom-Right Toast Notification Stack -->
                 <ItemsControl ItemsSource="{Binding ActiveToasts}" HorizontalAlignment="Right" VerticalAlignment="Bottom"

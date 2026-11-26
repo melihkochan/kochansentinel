@@ -148,3 +148,92 @@ public sealed class UpdateDownloadProgress
     public long TotalBytes { get; set; }
     public string StatusText { get; set; } = "";
 }
+
+// --- Hardware Driver & Windows Update Audit Models ---
+public sealed class DriverAuditItem
+{
+    public string DeviceName { get; set; } = "";
+    public string DeviceClass { get; set; } = "";
+    public string Provider { get; set; } = "";
+    public string CurrentVersion { get; set; } = "";
+    public string DriverDateText { get; set; } = "—";
+    public string StatusBadge { get; set; } = "Güncel";
+    public string Recommendation { get; set; } = "";
+    public FindingSeverity Severity { get; set; } = FindingSeverity.Info;
+    public bool IsPendingWindowsUpdate { get; set; }
+    public string UpdateId { get; set; } = "";
+}
+
+// --- Monitor & Color Calibration Models ---
+public sealed class MonitorDisplayInfo
+{
+    public string DeviceName { get; set; } = ""; // e.g. \\.\DISPLAY1
+    public string FriendlyName { get; set; } = "";
+    public bool IsPrimary { get; set; }
+    public int Width { get; set; }
+    public int Height { get; set; }
+    public int MaxWidth { get; set; }
+    public int MaxHeight { get; set; }
+    public int CurrentRefreshHz { get; set; }
+    public int MaxRefreshHz { get; set; }
+    public int BitsPerPixel { get; set; }
+    public string IccProfileName { get; set; } = "Varsayılan (Profil Yok)";
+    public bool SupportsDdcBrightness { get; set; }
+    public int CurrentBrightness { get; set; } = -1;
+    public int CurrentContrast { get; set; } = -1;
+    public bool NeedsRefreshRateBoost => MaxRefreshHz > CurrentRefreshHz && MaxRefreshHz >= 75;
+    public string ResolutionSummary => $"{Width}x{Height} @ {CurrentRefreshHz} Hz (Maks: {MaxWidth}x{MaxHeight} @ {MaxRefreshHz} Hz)";
+    public string RefreshStatusBadge => NeedsRefreshRateBoost ? $"⚠ {CurrentRefreshHz}Hz → {MaxRefreshHz}Hz Yapılabilir!" : $"✓ {CurrentRefreshHz} Hz (Optimum)";
+    public List<string> Recommendations { get; set; } = new();
+    public string RecommendationsText => string.Join("\n• ", Recommendations);
+}
+
+public sealed class ColorProfilePreset
+{
+    public string Id { get; set; } = "";
+    public string Name { get; set; } = "";
+    public string Description { get; set; } = "";
+    public double Gamma { get; set; } = 1.0;
+    public double RedScale { get; set; } = 1.0;
+    public double GreenScale { get; set; } = 1.0;
+    public double BlueScale { get; set; } = 1.0;
+    public double BrightnessLift { get; set; } = 0.0;
+}
+
+// --- Unused Windows Services & Background Bloat Audit Models ---
+public sealed class ServiceOptimizationItem
+{
+    public string ServiceName { get; set; } = "";
+    public string DisplayName { get; set; } = "";
+    public string Category { get; set; } = "";
+    public string Description { get; set; } = "";
+    public string CurrentStatus { get; set; } = ""; // Çalışıyor / Durduruldu
+    public string CurrentStartMode { get; set; } = ""; // Automatic / Manual / Disabled
+    public string RecommendedStartMode { get; set; } = "Manual"; // Manual / Disabled
+    public string DefaultStartMode { get; set; } = "Manual";
+    public bool IsOptimized { get; set; }
+    public FindingSeverity ImpactSeverity { get; set; } = FindingSeverity.Low;
+    public string StatusBadge => IsOptimized ? "✓ Optimize" : $"{CurrentStatus} ({CurrentStartMode})";
+    public string ActionText => IsOptimized ? "Varsayılana Döndür" : $"Önerilene Al ({RecommendedStartMode})";
+}
+
+public sealed class BloatProcessAuditItem
+{
+    public int Pid { get; set; }
+    public string ProcessName { get; set; } = "";
+    public string Category { get; set; } = ""; // Gereksiz Arka Plan / Riskli & İmzasız
+    public string Reason { get; set; } = "";
+    public double RamMb { get; set; }
+    public double CpuPercent { get; set; }
+    public bool IsRisky { get; set; }
+    public FindingSeverity Severity { get; set; } = FindingSeverity.Low;
+}
+
+public sealed class OpenSourceToolReference
+{
+    public string Name { get; set; } = "";
+    public string RepoSlug { get; set; } = "";
+    public string Category { get; set; } = "";
+    public string Description { get; set; } = "";
+    public string Url => $"https://github.com/{RepoSlug}";
+}
