@@ -88,11 +88,49 @@ public partial class MainViewModel
         }
     }
 
+    // --- Startup Task Scheduler Live Status (Settings Tab) ---
+    [ObservableProperty] private string _startupTaskStatusText = "Başlangıç görevi durumu kontrol ediliyor...";
+
     private void InitializeHardwareStudio()
     {
         foreach (var preset in DisplayAndColorService.GetColorPresets())
             ColorPresets.Add(preset);
         _activeColorPreset = ColorPresets.FirstOrDefault() ?? _activeColorPreset;
+        RefreshStartupTaskStatus();
+    }
+
+    public void RefreshStartupTaskStatus()
+    {
+        _ = Task.Run(() =>
+        {
+            var status = _settingsService.GetStartupRegistrationStatus(Settings.StartWithWindows);
+            System.Windows.Application.Current?.Dispatcher.Invoke(() =>
+            {
+                StartupTaskStatusText = status.StatusSummary;
+            });
+        });
+    }
+
+    [RelayCommand]
+    private void RepairWindowsStartupTask()
+    {
+        Settings.StartWithWindows = true;
+        bool ok = _settingsService.Save(Settings);
+        RefreshStartupTaskStatus();
+        StatusBanner = ok
+            ? "Windows otomatik başlangıç görevi (KochanSentinelAutoStart) mevcut EXE yoluna başarıyla yenilendi!"
+            : "Başlangıç görevi oluşturulamadı (Yönetici izni gerekiyor).";
+        ShowToast(ok ? "Otomatik Başlangıç Hazır" : "Başlangıç Görevi Hatası", StatusBanner, ok ? FindingSeverity.Info : FindingSeverity.High);
+    }
+
+    [RelayCommand]
+    private void OpenTaskScheduler()
+    {
+        try
+        {
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("taskschd.msc") { UseShellExecute = true });
+        }
+        catch { }
     }
 
     public void CleanupHardwareStudioOnExit()

@@ -78,6 +78,7 @@ public partial class MainWindow : FluentWindow
         {
             EnsureHwndAndHooks();
             Hide();
+            _trayIcon.ShowBalloonTip(3000, "KOCHAN Sentinel", "Arka planda otomatik başlatıldı — sistem tepsisinden erişebilirsin.", ToolTipIcon.Info);
         }
 
         if (justUpdated)

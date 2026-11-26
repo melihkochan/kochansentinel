@@ -1954,7 +1954,20 @@
                                             <Path Style="{StaticResource ShadcnIconPath}" Data="{StaticResource GeoSliders}" Stroke="#A1A1AA" Margin="0,0,8,0" />
                                             <TextBlock Text="Genel &amp; Otomatik Zamanlayıcı" FontSize="14.5" FontWeight="SemiBold" Foreground="#FAFAFA" />
                                         </StackPanel>
-                                        <ui:ToggleSwitch Content="Windows ile birlikte arka planda başlat" IsChecked="{Binding Settings.StartWithWindows}" Margin="0,0,0,8" Checked="SettingControl_AutoSave" Unchecked="SettingControl_AutoSave" />
+                                        <ui:ToggleSwitch Content="Windows ile birlikte arka planda başlat" IsChecked="{Binding Settings.StartWithWindows}" Margin="0,0,0,6" Checked="SettingControl_AutoSave" Unchecked="SettingControl_AutoSave" />
+                                        <Border Background="#18181B" CornerRadius="6" Padding="9,7" Margin="0,0,0,9" BorderBrush="#27272A" BorderThickness="1">
+                                            <StackPanel>
+                                                <TextBlock Text="{Binding StartupTaskStatusText}" Foreground="#86EFAC" FontSize="11" TextWrapping="Wrap" />
+                                                <TextBlock Text="Yönetici (UAC'sız) başlangıç için Görev Zamanlayıcı (KochanSentinelAutoStart) kullanılır; Görev Yöneticisi Başlangıç listesinde görünmez."
+                                                           Foreground="#71717A" FontSize="10" TextWrapping="Wrap" Margin="0,3,0,6" />
+                                                <WrapPanel Orientation="Horizontal">
+                                                    <Button Content="Başlangıç Kaydını Yenile" Style="{StaticResource ShadcnSecondaryBtn}" Padding="8,3" FontSize="10.5" Margin="0,0,6,0"
+                                                            Command="{Binding RepairWindowsStartupTaskCommand}" />
+                                                    <Button Content="Görev Zamanlayıcıyı Aç" Style="{StaticResource ShadcnSecondaryBtn}" Padding="8,3" FontSize="10.5"
+                                                            Command="{Binding OpenTaskSchedulerCommand}" />
+                                                </WrapPanel>
+                                            </StackPanel>
+                                        </Border>
                                         <ui:ToggleSwitch Content="Pencere kapatıldığında sistem tepsisine küçült" IsChecked="{Binding Settings.MinimizeToTrayOnClose}" Margin="0,0,0,8" Checked="SettingControl_AutoSave" Unchecked="SettingControl_AutoSave" />
                                         <ui:ToggleSwitch Content="Açılışta Mini HUD'ı göster" IsChecked="{Binding Settings.ShowMiniHudOnStart}" Margin="0,0,0,8" Checked="SettingControl_AutoSave" Unchecked="SettingControl_AutoSave" />
                                         <ui:ToggleSwitch Content="Açılışta yeni GitHub sürümlerini sessizce denetle" IsChecked="{Binding Settings.AutoCheckUpdatesOnStart}" Margin="0,0,0,8" Checked="SettingControl_AutoSave" Unchecked="SettingControl_AutoSave" />

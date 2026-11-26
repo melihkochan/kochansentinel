@@ -1397,6 +1397,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private void SaveSettings()
     {
         bool startupSynced = _settingsService.Save(Settings);
+        RefreshStartupTaskStatus();
         SyncRealtimeProtections();
         OnSettingsSynced?.Invoke();
 

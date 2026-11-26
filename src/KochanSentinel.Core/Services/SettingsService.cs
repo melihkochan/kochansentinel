@@ -1,9 +1,12 @@
 using System;
 using System.Diagnostics;
 using System.IO;
+using System.Net;
 using System.Security;
+using System.Security.Principal;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using KochanSentinel.Core.Interop;
 using KochanSentinel.Core.Models;
 using Microsoft.Win32;
@@ -151,6 +154,29 @@ public sealed class SettingsService
         return true;
     }
 
+    public bool RepairStartupRegistration(bool enable) => ApplyWindowsStartup(enable);
+
+    public (bool Registered, bool TargetExists, string RegisteredPath, string StatusSummary) GetStartupRegistrationStatus(bool settingEnabled)
+    {
+        if (!settingEnabled)
+            return (false, false, "", "○ Otomatik başlangıç kapalı (Ayarlar'dan dilediğin zaman açabilirsin).");
+
+        var (ok, xmlOut) = RunSchtasksCapture($"/Query /TN \"{StartupTaskName}\" /XML");
+        if (!ok || string.IsNullOrWhiteSpace(xmlOut))
+            return (false, false, "", "⚠ Görev Zamanlayıcı kaydı bulunamadı — 'Başlangıç Kaydını Yenile' butonuna tıkla.");
+
+        var m = Regex.Match(xmlOut, @"<Command>(.*?)</Command>", RegexOptions.IgnoreCase | RegexOptions.Singleline);
+        string rawCmd = m.Success ? WebUtility.HtmlDecode(m.Groups[1].Value).Trim().Trim('"') : "";
+        bool exists = !string.IsNullOrWhiteSpace(rawCmd) && File.Exists(rawCmd);
+        bool isOneDrive = rawCmd.Contains("OneDrive", StringComparison.OrdinalIgnoreCase);
+
+        if (!exists)
+            return (true, false, rawCmd, $"⚠ Kayıtlı EXE yolu bulunamıyor ({rawCmd}) — 'Başlangıç Kaydını Yenile'ye tıkla!");
+
+        string oneDriveHint = isOneDrive ? " (OneDrive gecikme/tekrar korumalı)" : "";
+        return (true, true, rawCmd, $"✓ Görev Zamanlayıcı Aktif (UAC'sız Yönetici){oneDriveHint}\nHedef: {rawCmd}");
+    }
+
     private static bool ApplyWindowsStartup(bool enable)
     {
         // Always remove legacy HKCU\...\Run value because Windows blocks requireAdministrator EXEs on Run keys
@@ -177,7 +203,12 @@ public sealed class SettingsService
                 if (File.Exists(candidate)) exePath = candidate;
             }
 
-            // Create Task Scheduler logon task with HighestAvailable privileges (no UAC block at boot)
+            string userSid = "";
+            try { userSid = WindowsIdentity.GetCurrent().User?.Value ?? ""; } catch { }
+            string userIdXml = string.IsNullOrWhiteSpace(userSid) ? "" : $"<UserId>{SecurityElement.Escape(userSid)}</UserId>";
+
+            // Create Task Scheduler logon task with HighestAvailable privileges (no UAC block at boot).
+            // Raw unquoted <Command> per Task Scheduler XML schema + PT8S delay + RestartOnFailure for OneDrive mounts.
             string escapedExe = SecurityElement.Escape(exePath) ?? exePath;
             string escapedWorkDir = SecurityElement.Escape(Path.GetDirectoryName(exePath) ?? "") ?? "";
             string xml = $"""
@@ -189,11 +220,13 @@ public sealed class SettingsService
                   <Triggers>
                     <LogonTrigger>
                       <Enabled>true</Enabled>
-                      <Delay>PT3S</Delay>
+                      <Delay>PT8S</Delay>
+                      {userIdXml}
                     </LogonTrigger>
                   </Triggers>
                   <Principals>
                     <Principal id="Author">
+                      {userIdXml}
                       <LogonType>InteractiveToken</LogonType>
                       <RunLevel>HighestAvailable</RunLevel>
                     </Principal>
@@ -205,12 +238,16 @@ public sealed class SettingsService
                     <AllowHardTerminate>true</AllowHardTerminate>
                     <StartWhenAvailable>true</StartWhenAvailable>
                     <RunOnlyIfNetworkAvailable>false</RunOnlyIfNetworkAvailable>
+                    <RestartOnFailure>
+                      <Interval>PT1M</Interval>
+                      <Count>2</Count>
+                    </RestartOnFailure>
                     <ExecutionTimeLimit>PT0S</ExecutionTimeLimit>
                     <Priority>5</Priority>
                   </Settings>
                   <Actions Context="Author">
                     <Exec>
-                      <Command>"{escapedExe}"</Command>
+                      <Command>{escapedExe}</Command>
                       <Arguments>--minimized</Arguments>
                       <WorkingDirectory>{escapedWorkDir}</WorkingDirectory>
                     </Exec>
@@ -238,7 +275,9 @@ public sealed class SettingsService
         }
     }
 
-    private static bool RunSchtasks(string args)
+    private static bool RunSchtasks(string args) => RunSchtasksCapture(args).Ok;
+
+    private static (bool Ok, string StdOut) RunSchtasksCapture(string args)
     {
         try
         {
@@ -250,13 +289,21 @@ public sealed class SettingsService
                 RedirectStandardError = true
             };
             using var p = Process.Start(psi);
-            if (p == null) return false;
-            p.WaitForExit(3500);
-            return p.ExitCode == 0;
+            if (p == null) return (false, "");
+            var outTask = p.StandardOutput.ReadToEndAsync();
+            var errTask = p.StandardError.ReadToEndAsync();
+            if (!p.WaitForExit(4500))
+            {
+                try { p.Kill(); } catch { }
+                return (false, "");
+            }
+            string stdout = outTask.Wait(1000) ? outTask.Result : "";
+            _ = errTask.Wait(500);
+            return (p.ExitCode == 0, stdout);
         }
         catch
         {
-            return false;
+            return (false, "");
         }
     }
 }
