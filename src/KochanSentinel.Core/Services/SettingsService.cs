@@ -161,20 +161,55 @@ public sealed class SettingsService
         if (!settingEnabled)
             return (false, false, "", "○ Otomatik başlangıç kapalı (Ayarlar'dan dilediğin zaman açabilirsin).");
 
-        var (ok, xmlOut) = RunSchtasksCapture($"/Query /TN \"{StartupTaskName}\" /XML");
-        if (!ok || string.IsNullOrWhiteSpace(xmlOut))
-            return (false, false, "", "⚠ Görev Zamanlayıcı kaydı bulunamadı — 'Başlangıç Kaydını Yenile' butonuna tıkla.");
+        // Use native UTF-16 Unicode Task Scheduler COM API (Schedule.Service) — zero OEM codepage / Turkish char loss!
+        try
+        {
+            var svcType = Type.GetTypeFromProgID("Schedule.Service");
+            if (svcType != null)
+            {
+                dynamic service = Activator.CreateInstance(svcType)!;
+                service.Connect();
+                dynamic root = service.GetFolder("\\");
+                dynamic task;
+                try
+                {
+                    task = root.GetTask(StartupTaskName);
+                }
+                catch
+                {
+                    return (false, false, "", "⚠ Görev Zamanlayıcı kaydı bulunamadı — 'Başlangıç Kaydını Yenile' butonuna tıkla.");
+                }
 
-        var m = Regex.Match(xmlOut, @"<Command>(.*?)</Command>", RegexOptions.IgnoreCase | RegexOptions.Singleline);
-        string rawCmd = m.Success ? WebUtility.HtmlDecode(m.Groups[1].Value).Trim().Trim('"') : "";
-        bool exists = !string.IsNullOrWhiteSpace(rawCmd) && File.Exists(rawCmd);
-        bool isOneDrive = rawCmd.Contains("OneDrive", StringComparison.OrdinalIgnoreCase);
+                bool enabled = true;
+                try { enabled = (bool)task.Enabled; } catch { }
 
-        if (!exists)
-            return (true, false, rawCmd, $"⚠ Kayıtlı EXE yolu bulunamıyor ({rawCmd}) — 'Başlangıç Kaydını Yenile'ye tıkla!");
+                string rawCmd = "";
+                try
+                {
+                    dynamic actions = task.Definition.Actions;
+                    if ((int)actions.Count >= 1)
+                    {
+                        dynamic act = actions.Item(1); // 1-based COM collection
+                        rawCmd = (act.Path?.ToString() ?? "").Trim().Trim('"');
+                    }
+                }
+                catch { }
 
-        string oneDriveHint = isOneDrive ? " (OneDrive gecikme/tekrar korumalı)" : "";
-        return (true, true, rawCmd, $"✓ Görev Zamanlayıcı Aktif (UAC'sız Yönetici){oneDriveHint}\nHedef: {rawCmd}");
+                if (!enabled)
+                    return (true, false, rawCmd, "⚠ Başlangıç görevi devre dışı bırakılmış — 'Başlangıç Kaydını Yenile'ye tıkla.");
+
+                bool exists = !string.IsNullOrWhiteSpace(rawCmd) && File.Exists(rawCmd);
+                if (!exists)
+                    return (true, false, rawCmd, $"⚠ Kayıtlı EXE yolu bulunamıyor ({rawCmd}) — 'Başlangıç Kaydını Yenile'ye tıkla!");
+
+                bool isOneDrive = rawCmd.Contains("OneDrive", StringComparison.OrdinalIgnoreCase);
+                string oneDriveHint = isOneDrive ? " (OneDrive gecikme/tekrar korumalı)" : "";
+                return (true, true, rawCmd, $"✓ Görev Zamanlayıcı Aktif (UAC'sız Yönetici){oneDriveHint}\nHedef: {rawCmd}");
+            }
+        }
+        catch { }
+
+        return (false, false, "", "⚠ Görev Zamanlayıcı durumu okunamadı — 'Başlangıç Kaydını Yenile' butonuna tıkla.");
     }
 
     private static bool ApplyWindowsStartup(bool enable)
@@ -187,6 +222,67 @@ public sealed class SettingsService
         }
         catch { }
 
+        // Primary path: Native UTF-16 Unicode Task Scheduler COM API (Schedule.Service)
+        // Preserves Turkish/Unicode paths like "Masaüstü" with 100% fidelity and zero schtasks.exe codepage bugs.
+        try
+        {
+            var svcType = Type.GetTypeFromProgID("Schedule.Service");
+            if (svcType != null)
+            {
+                dynamic service = Activator.CreateInstance(svcType)!;
+                service.Connect();
+                dynamic root = service.GetFolder("\\");
+
+                if (!enable)
+                {
+                    try { root.DeleteTask(StartupTaskName, 0); } catch { }
+                    return true;
+                }
+
+                var exePath = ResolveCurrentExePath();
+                if (string.IsNullOrEmpty(exePath)) return false;
+
+                string userSid = "";
+                try { userSid = WindowsIdentity.GetCurrent().User?.Value ?? ""; } catch { }
+
+                dynamic td = service.NewTask(0);
+                td.RegistrationInfo.Description = "KOCHAN Sentinel arka plan sistem performansı ve güvenlik kalkanı otomatik başlatma görevi.";
+                td.Principal.LogonType = 3; // TASK_LOGON_INTERACTIVE_TOKEN
+                td.Principal.RunLevel = 1;  // TASK_RUNLEVEL_HIGHEST (no UAC prompt at boot)
+                if (!string.IsNullOrWhiteSpace(userSid))
+                    td.Principal.UserId = userSid;
+
+                td.Settings.Enabled = true;
+                td.Settings.MultipleInstances = 2; // TASK_INSTANCES_IGNORE_NEW
+                td.Settings.DisallowStartIfOnBatteries = false;
+                td.Settings.StopIfGoingOnBatteries = false;
+                td.Settings.AllowHardTerminate = true;
+                td.Settings.StartWhenAvailable = true;
+                td.Settings.RunOnlyIfNetworkAvailable = false;
+                td.Settings.ExecutionTimeLimit = "PT0S";
+                td.Settings.Priority = 5;
+                td.Settings.RestartInterval = "PT1M";
+                td.Settings.RestartCount = 2;
+
+                dynamic trigger = td.Triggers.Create(9); // TASK_TRIGGER_LOGON
+                trigger.Enabled = true;
+                trigger.Delay = "PT8S";
+                if (!string.IsNullOrWhiteSpace(userSid))
+                    trigger.UserId = userSid;
+
+                dynamic action = td.Actions.Create(0); // TASK_ACTION_EXEC
+                action.Path = exePath; // Raw native UTF-16 BSTR — preserves Masaüstü / Unicode perfectly!
+                action.Arguments = "--minimized";
+                action.WorkingDirectory = Path.GetDirectoryName(exePath) ?? "";
+
+                // 6 = TASK_CREATE_OR_UPDATE, 3 = TASK_LOGON_INTERACTIVE_TOKEN
+                root.RegisterTaskDefinition(StartupTaskName, td, 6, null, null, 3, null);
+                return true;
+            }
+        }
+        catch { }
+
+        // Fallback: schtasks.exe with UTF-16 XML file
         try
         {
             if (!enable)
@@ -195,22 +291,15 @@ public sealed class SettingsService
                 return true;
             }
 
-            var exePath = Environment.ProcessPath;
+            var exePath = ResolveCurrentExePath();
             if (string.IsNullOrEmpty(exePath)) return false;
-            if (exePath.EndsWith(".dll", StringComparison.OrdinalIgnoreCase))
-            {
-                var candidate = Path.ChangeExtension(exePath, ".exe");
-                if (File.Exists(candidate)) exePath = candidate;
-            }
 
             string userSid = "";
             try { userSid = WindowsIdentity.GetCurrent().User?.Value ?? ""; } catch { }
             string userIdXml = string.IsNullOrWhiteSpace(userSid) ? "" : $"<UserId>{SecurityElement.Escape(userSid)}</UserId>";
-
-            // Create Task Scheduler logon task with HighestAvailable privileges (no UAC block at boot).
-            // Raw unquoted <Command> per Task Scheduler XML schema + PT8S delay + RestartOnFailure for OneDrive mounts.
             string escapedExe = SecurityElement.Escape(exePath) ?? exePath;
             string escapedWorkDir = SecurityElement.Escape(Path.GetDirectoryName(exePath) ?? "") ?? "";
+
             string xml = $"""
                 <?xml version="1.0" encoding="UTF-16"?>
                 <Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
@@ -259,15 +348,12 @@ public sealed class SettingsService
             try
             {
                 File.WriteAllText(tmpXml, xml, Encoding.Unicode);
-                if (RunSchtasks($"/Create /TN \"{StartupTaskName}\" /XML \"{tmpXml}\" /F"))
-                    return true;
+                return RunSchtasks($"/Create /TN \"{StartupTaskName}\" /XML \"{tmpXml}\" /F");
             }
             finally
             {
                 try { if (File.Exists(tmpXml)) File.Delete(tmpXml); } catch { }
             }
-
-            return RunSchtasks($"/Create /TN \"{StartupTaskName}\" /TR \"\\\"{exePath}\\\" --minimized\" /SC ONLOGON /RL HIGHEST /F");
         }
         catch
         {
@@ -275,9 +361,18 @@ public sealed class SettingsService
         }
     }
 
-    private static bool RunSchtasks(string args) => RunSchtasksCapture(args).Ok;
+    private static string ResolveCurrentExePath()
+    {
+        var exePath = Environment.ProcessPath ?? "";
+        if (exePath.EndsWith(".dll", StringComparison.OrdinalIgnoreCase))
+        {
+            var candidate = Path.ChangeExtension(exePath, ".exe");
+            if (File.Exists(candidate)) exePath = candidate;
+        }
+        return exePath;
+    }
 
-    private static (bool Ok, string StdOut) RunSchtasksCapture(string args)
+    private static bool RunSchtasks(string args)
     {
         try
         {
@@ -289,21 +384,21 @@ public sealed class SettingsService
                 RedirectStandardError = true
             };
             using var p = Process.Start(psi);
-            if (p == null) return (false, "");
+            if (p == null) return false;
             var outTask = p.StandardOutput.ReadToEndAsync();
             var errTask = p.StandardError.ReadToEndAsync();
             if (!p.WaitForExit(4500))
             {
                 try { p.Kill(); } catch { }
-                return (false, "");
+                return false;
             }
-            string stdout = outTask.Wait(1000) ? outTask.Result : "";
+            _ = outTask.Wait(500);
             _ = errTask.Wait(500);
-            return (p.ExitCode == 0, stdout);
+            return p.ExitCode == 0;
         }
         catch
         {
-            return (false, "");
+            return false;
         }
     }
 }

@@ -1957,7 +1957,7 @@
                                         <ui:ToggleSwitch Content="Windows ile birlikte arka planda başlat" IsChecked="{Binding Settings.StartWithWindows}" Margin="0,0,0,6" Checked="SettingControl_AutoSave" Unchecked="SettingControl_AutoSave" />
                                         <Border Background="#18181B" CornerRadius="6" Padding="9,7" Margin="0,0,0,9" BorderBrush="#27272A" BorderThickness="1">
                                             <StackPanel>
-                                                <TextBlock Text="{Binding StartupTaskStatusText}" Foreground="#86EFAC" FontSize="11" TextWrapping="Wrap" />
+                                                <TextBlock Text="{Binding StartupTaskStatusText}" Foreground="{Binding StartupTaskStatusColor}" FontSize="11" TextWrapping="Wrap" />
                                                 <TextBlock Text="Yönetici (UAC'sız) başlangıç için Görev Zamanlayıcı (KochanSentinelAutoStart) kullanılır; Görev Yöneticisi Başlangıç listesinde görünmez."
                                                            Foreground="#71717A" FontSize="10" TextWrapping="Wrap" Margin="0,3,0,6" />
                                                 <WrapPanel Orientation="Horizontal">

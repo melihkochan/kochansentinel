@@ -90,6 +90,7 @@ public partial class MainViewModel
 
     // --- Startup Task Scheduler Live Status (Settings Tab) ---
     [ObservableProperty] private string _startupTaskStatusText = "Başlangıç görevi durumu kontrol ediliyor...";
+    [ObservableProperty] private string _startupTaskStatusColor = "#A1A1AA";
 
     private void InitializeHardwareStudio()
     {
@@ -104,9 +105,13 @@ public partial class MainViewModel
         _ = Task.Run(() =>
         {
             var status = _settingsService.GetStartupRegistrationStatus(Settings.StartWithWindows);
+            string color = !Settings.StartWithWindows
+                ? "#A1A1AA"
+                : (status.Registered && status.TargetExists ? "#86EFAC" : "#FBBF24");
             System.Windows.Application.Current?.Dispatcher.Invoke(() =>
             {
                 StartupTaskStatusText = status.StatusSummary;
+                StartupTaskStatusColor = color;
             });
         });
     }

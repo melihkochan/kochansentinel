@@ -21,9 +21,9 @@
     <DebugSymbols Condition="'$(Configuration)' == 'Release'">false</DebugSymbols>
     <AssemblyName>KochanSentinel</AssemblyName>
     <RootNamespace>KochanSentinel.App</RootNamespace>
-    <Version>1.2.4</Version>
-    <FileVersion>1.2.4.0</FileVersion>
-    <AssemblyVersion>1.2.4.0</AssemblyVersion>
+    <Version>1.2.5</Version>
+    <FileVersion>1.2.5.0</FileVersion>
+    <AssemblyVersion>1.2.5.0</AssemblyVersion>
     <Product>KOCHAN Sentinel</Product>
     <Company>KOCHAN</Company>
     <FileDescription>KOCHAN Sentinel — Sistem Performans ve Güvenlik Merkezi</FileDescription>
