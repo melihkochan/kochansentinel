@@ -5,6 +5,8 @@ using System.Globalization;
 using System.Linq;
 using System.Management;
 using System.Net.NetworkInformation;
+using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
@@ -418,6 +420,102 @@ public sealed class DriverUpdateService
         }, ct);
     }
 
+    // --- Official Microsoft wuapi.idl COM Callback Interfaces (IUnknown) ---
+    [ComImport]
+    [Guid("8C3F1CDD-6173-4591-AEBD-A56A53CA77C1")]
+    [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    private interface IWuaDownloadProgressCallback
+    {
+        void Invoke(
+            [In, MarshalAs(UnmanagedType.IUnknown)] object downloadJob,
+            [In, MarshalAs(UnmanagedType.IUnknown)] object callbackArgs);
+    }
+
+    [ComImport]
+    [Guid("77254866-9F5B-4C8E-B9E2-C77A8530D64B")]
+    [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    private interface IWuaDownloadCompletedCallback
+    {
+        void Invoke(
+            [In, MarshalAs(UnmanagedType.IUnknown)] object downloadJob,
+            [In, MarshalAs(UnmanagedType.IUnknown)] object callbackArgs);
+    }
+
+    [ComImport]
+    [Guid("E01402D5-F8DA-43BA-A012-38894BD048F1")]
+    [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    private interface IWuaInstallProgressCallback
+    {
+        void Invoke(
+            [In, MarshalAs(UnmanagedType.IUnknown)] object installationJob,
+            [In, MarshalAs(UnmanagedType.IUnknown)] object callbackArgs);
+    }
+
+    [ComImport]
+    [Guid("45F4F6F3-D602-4F98-9A8A-3EFA152AD2D3")]
+    [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    private interface IWuaInstallCompletedCallback
+    {
+        void Invoke(
+            [In, MarshalAs(UnmanagedType.IUnknown)] object installationJob,
+            [In, MarshalAs(UnmanagedType.IUnknown)] object callbackArgs);
+    }
+
+    [ComVisible(true)]
+    [ClassInterface(ClassInterfaceType.None)]
+    private sealed class WuaDownloadProgressHandler : IWuaDownloadProgressCallback
+    {
+        public volatile int Percent;
+        public long BytesDownloaded;
+        public long BytesToDownload;
+
+        public void Invoke(object downloadJob, object callbackArgs)
+        {
+            try
+            {
+                dynamic args = callbackArgs;
+                dynamic p = args.Progress;
+                Percent = Convert.ToInt32(p.PercentComplete);
+                Interlocked.Exchange(ref BytesDownloaded, Convert.ToInt64(p.CurrentUpdateBytesDownloaded));
+                Interlocked.Exchange(ref BytesToDownload, Convert.ToInt64(p.CurrentUpdateBytesToDownload));
+            }
+            catch { }
+        }
+    }
+
+    [ComVisible(true)]
+    [ClassInterface(ClassInterfaceType.None)]
+    private sealed class WuaDownloadCompletedHandler : IWuaDownloadCompletedCallback
+    {
+        public readonly ManualResetEventSlim Done = new(false);
+        public void Invoke(object downloadJob, object callbackArgs) => Done.Set();
+    }
+
+    [ComVisible(true)]
+    [ClassInterface(ClassInterfaceType.None)]
+    private sealed class WuaInstallProgressHandler : IWuaInstallProgressCallback
+    {
+        public volatile int Percent;
+        public void Invoke(object installationJob, object callbackArgs)
+        {
+            try
+            {
+                dynamic args = callbackArgs;
+                dynamic p = args.Progress;
+                Percent = Convert.ToInt32(p.PercentComplete);
+            }
+            catch { }
+        }
+    }
+
+    [ComVisible(true)]
+    [ClassInterface(ClassInterfaceType.None)]
+    private sealed class WuaInstallCompletedHandler : IWuaInstallCompletedCallback
+    {
+        public readonly ManualResetEventSlim Done = new(false);
+        public void Invoke(object installationJob, object callbackArgs) => Done.Set();
+    }
+
     private static bool DownloadSingleUpdateWithProgress(
         dynamic session,
         dynamic singleColl,
@@ -431,21 +529,44 @@ public sealed class DriverUpdateService
         out string errorText)
     {
         errorText = "";
+        double basePct = (idx * 100.0) / totalCount;
+        double slicePct = 60.0 / totalCount; // Download = 60% of each driver's bar
+
         try
         {
-            dynamic downloader = session.CreateUpdateDownloader();
+            object downloaderObj = session.CreateUpdateDownloader();
+            dynamic downloader = downloaderObj;
             downloader.Updates = singleColl;
 
-            double basePct = (idx * 100.0) / totalCount;
-            double slicePct = 60.0 / totalCount; // Download = 60% of each driver's bar
+            var progCb = new WuaDownloadProgressHandler();
+            var compCb = new WuaDownloadCompletedHandler();
 
-            dynamic dlJob = downloader.BeginDownload(null, null, null);
+            object? dlJobObj = null;
+            try
+            {
+                dlJobObj = downloaderObj.GetType().InvokeMember(
+                    "BeginDownload",
+                    BindingFlags.InvokeMethod,
+                    null,
+                    downloaderObj,
+                    new object[] { new UnknownWrapper(progCb), new UnknownWrapper(compCb), "" });
+            }
+            catch
+            {
+                // Fallback to synchronous Download() with live system RX speed & elapsed monitoring
+                return DownloadSyncWithLiveMonitor(downloader, title, estBytes, idx, totalCount, basePct, slicePct, totalSw, progress, ct, out errorText);
+            }
+
+            if (dlJobObj == null)
+                return DownloadSyncWithLiveMonitor(downloader, title, estBytes, idx, totalCount, basePct, slicePct, totalSw, progress, ct, out errorText);
+
+            dynamic dlJob = dlJobObj;
             long prevBytes = 0;
             long prevNicBytes = GetTotalNetworkRxBytes();
             var sampleSw = Stopwatch.StartNew();
             double smoothSpeedMbps = 0;
 
-            while (!(bool)dlJob.IsCompleted)
+            while (!compCb.Done.IsSet && !(bool)dlJob.IsCompleted)
             {
                 if (ct.IsCancellationRequested)
                 {
@@ -453,14 +574,18 @@ public sealed class DriverUpdateService
                     ct.ThrowIfCancellationRequested();
                 }
 
-                int curPct = 0;
-                long downloaded = 0;
-                long toDownload = estBytes;
+                int curPct = progCb.Percent;
+                long downloaded = Interlocked.Read(ref progCb.BytesDownloaded);
+                long toDownload = Interlocked.Read(ref progCb.BytesToDownload);
+                if (toDownload <= 0) toDownload = estBytes;
+
                 try
                 {
                     dynamic p = dlJob.GetProgress();
-                    curPct = Convert.ToInt32(p.PercentComplete);
-                    downloaded = Convert.ToInt64(p.CurrentUpdateBytesDownloaded);
+                    int polledPct = Convert.ToInt32(p.PercentComplete);
+                    if (polledPct > curPct) curPct = polledPct;
+                    long polledDl = Convert.ToInt64(p.CurrentUpdateBytesDownloaded);
+                    if (polledDl > downloaded) downloaded = polledDl;
                     long wuaTotal = Convert.ToInt64(p.CurrentUpdateBytesToDownload);
                     if (wuaTotal > 0) toDownload = wuaTotal;
                 }
@@ -500,10 +625,13 @@ public sealed class DriverUpdateService
                     DetailText = $"İndirme %{curPct} • {bytesLabel}"
                 });
 
-                Thread.Sleep(350);
+                compCb.Done.Wait(320);
             }
 
             dynamic dlRes = downloader.EndDownload(dlJob);
+            GC.KeepAlive(progCb);
+            GC.KeepAlive(compCb);
+
             int code = Convert.ToInt32(dlRes.ResultCode); // 2 = Succeeded, 3 = SucceededWithErrors
             if (code is 2 or 3) return true;
 
@@ -513,9 +641,90 @@ public sealed class DriverUpdateService
         catch (OperationCanceledException) { throw; }
         catch (Exception ex)
         {
-            errorText = ex.Message;
+            errorText = ex.InnerException?.Message ?? ex.Message;
             return false;
         }
+    }
+
+    private static bool DownloadSyncWithLiveMonitor(
+        dynamic downloader,
+        string title,
+        long estBytes,
+        int idx,
+        int totalCount,
+        double basePct,
+        double slicePct,
+        Stopwatch totalSw,
+        IProgress<DriverInstallProgress>? progress,
+        CancellationToken ct,
+        out string errorText)
+    {
+        errorText = "";
+        using var localDone = new ManualResetEventSlim(false);
+        int resultCode = 0;
+        Exception? taskErr = null;
+
+        var worker = Task.Run(() =>
+        {
+            try
+            {
+                dynamic dlRes = downloader.Download();
+                resultCode = Convert.ToInt32(dlRes.ResultCode);
+            }
+            catch (Exception ex) { taskErr = ex; }
+            finally { localDone.Set(); }
+        });
+
+        long prevNic = GetTotalNetworkRxBytes();
+        long accumBytes = 0;
+        var sampleSw = Stopwatch.StartNew();
+        double smoothMbps = 0;
+        double estPct = 8;
+
+        while (!localDone.IsSet)
+        {
+            ct.ThrowIfCancellationRequested();
+            double dtSec = sampleSw.Elapsed.TotalSeconds;
+            if (dtSec >= 0.45)
+            {
+                long nowNic = GetTotalNetworkRxBytes();
+                long delta = Math.Max(0, nowNic - prevNic);
+                accumBytes += delta;
+                double inst = (delta / dtSec) / (1024.0 * 1024.0);
+                smoothMbps = smoothMbps <= 0.01 ? inst : (smoothMbps * 0.55 + inst * 0.45);
+                prevNic = nowNic;
+                sampleSw.Restart();
+                estPct = estBytes > 0
+                    ? Math.Clamp((accumBytes * 100.0) / estBytes, 8, 92)
+                    : Math.Min(90, estPct + 2.5);
+            }
+
+            progress?.Report(new DriverInstallProgress
+            {
+                Phase = "İndiriliyor",
+                Percent = Math.Clamp(basePct + (estPct / 100.0) * slicePct, 2, 95),
+                CurrentIndex = idx + 1,
+                TotalCount = totalCount,
+                CurrentDriverName = title,
+                SpeedMbps = smoothMbps,
+                ElapsedText = FormatElapsed(totalSw.Elapsed),
+                DetailText = estBytes > 0
+                    ? $"Windows Update indiriyor • Paket boyutu: {FormatBytes(estBytes)}"
+                    : "Windows Update sürücü paketini indiriyor..."
+            });
+
+            localDone.Wait(350);
+        }
+
+        worker.Wait();
+        if (taskErr != null)
+        {
+            errorText = taskErr.InnerException?.Message ?? taskErr.Message;
+            return false;
+        }
+        if (resultCode is 2 or 3) return true;
+        errorText = $"İndirme Kodu {resultCode}";
+        return false;
     }
 
     private static bool InstallSingleUpdateWithProgress(
@@ -532,16 +741,38 @@ public sealed class DriverUpdateService
     {
         rebootRequired = false;
         errorText = "";
+        double basePct = (idx * 100.0) / totalCount + (60.0 / totalCount);
+        double slicePct = 40.0 / totalCount; // Install = 40% of each driver's bar
+
         try
         {
-            dynamic installer = session.CreateUpdateInstaller();
+            object installerObj = session.CreateUpdateInstaller();
+            dynamic installer = installerObj;
             installer.Updates = singleColl;
 
-            double basePct = (idx * 100.0) / totalCount + (60.0 / totalCount);
-            double slicePct = 40.0 / totalCount; // Install = 40% of each driver's bar
+            var progCb = new WuaInstallProgressHandler();
+            var compCb = new WuaInstallCompletedHandler();
 
-            dynamic instJob = installer.BeginInstall(null, null, null);
-            while (!(bool)instJob.IsCompleted)
+            object? instJobObj = null;
+            try
+            {
+                instJobObj = installerObj.GetType().InvokeMember(
+                    "BeginInstall",
+                    BindingFlags.InvokeMethod,
+                    null,
+                    installerObj,
+                    new object[] { new UnknownWrapper(progCb), new UnknownWrapper(compCb), "" });
+            }
+            catch
+            {
+                return InstallSyncWithLiveMonitor(installer, title, idx, totalCount, basePct, slicePct, totalSw, progress, ct, out rebootRequired, out errorText);
+            }
+
+            if (instJobObj == null)
+                return InstallSyncWithLiveMonitor(installer, title, idx, totalCount, basePct, slicePct, totalSw, progress, ct, out rebootRequired, out errorText);
+
+            dynamic instJob = instJobObj;
+            while (!compCb.Done.IsSet && !(bool)instJob.IsCompleted)
             {
                 if (ct.IsCancellationRequested)
                 {
@@ -549,11 +780,12 @@ public sealed class DriverUpdateService
                     ct.ThrowIfCancellationRequested();
                 }
 
-                int curPct = 0;
+                int curPct = progCb.Percent;
                 try
                 {
                     dynamic p = instJob.GetProgress();
-                    curPct = Convert.ToInt32(p.PercentComplete);
+                    int polled = Convert.ToInt32(p.PercentComplete);
+                    if (polled > curPct) curPct = polled;
                 }
                 catch { }
 
@@ -570,10 +802,13 @@ public sealed class DriverUpdateService
                     DetailText = $"Sistem sürücüsü kuruluyor (%{curPct})..."
                 });
 
-                Thread.Sleep(350);
+                compCb.Done.Wait(320);
             }
 
             dynamic instRes = installer.EndInstall(instJob);
+            GC.KeepAlive(progCb);
+            GC.KeepAlive(compCb);
+
             int code = Convert.ToInt32(instRes.ResultCode);
             try { rebootRequired = (bool)instRes.RebootRequired; } catch { }
 
@@ -587,9 +822,74 @@ public sealed class DriverUpdateService
         catch (OperationCanceledException) { throw; }
         catch (Exception ex)
         {
-            errorText = ex.Message;
+            errorText = ex.InnerException?.Message ?? ex.Message;
             return false;
         }
+    }
+
+    private static bool InstallSyncWithLiveMonitor(
+        dynamic installer,
+        string title,
+        int idx,
+        int totalCount,
+        double basePct,
+        double slicePct,
+        Stopwatch totalSw,
+        IProgress<DriverInstallProgress>? progress,
+        CancellationToken ct,
+        out bool rebootRequired,
+        out string errorText)
+    {
+        rebootRequired = false;
+        errorText = "";
+        using var localDone = new ManualResetEventSlim(false);
+        int resultCode = 0;
+        int hr = 0;
+        bool reboot = false;
+        Exception? taskErr = null;
+
+        var worker = Task.Run(() =>
+        {
+            try
+            {
+                dynamic instRes = installer.Install();
+                resultCode = Convert.ToInt32(instRes.ResultCode);
+                try { reboot = (bool)instRes.RebootRequired; } catch { }
+                try { hr = Convert.ToInt32(instRes.GetUpdateResult(0).HResult); } catch { }
+            }
+            catch (Exception ex) { taskErr = ex; }
+            finally { localDone.Set(); }
+        });
+
+        double estPct = 15;
+        while (!localDone.IsSet)
+        {
+            ct.ThrowIfCancellationRequested();
+            estPct = Math.Min(92, estPct + 3.0);
+            progress?.Report(new DriverInstallProgress
+            {
+                Phase = "Kuruluyor",
+                Percent = Math.Clamp(basePct + (estPct / 100.0) * slicePct, 2, 97),
+                CurrentIndex = idx + 1,
+                TotalCount = totalCount,
+                CurrentDriverName = title,
+                SpeedMbps = 0,
+                ElapsedText = FormatElapsed(totalSw.Elapsed),
+                DetailText = "Windows sürücü kurulumunu uyguluyor..."
+            });
+            localDone.Wait(400);
+        }
+
+        worker.Wait();
+        rebootRequired = reboot;
+        if (taskErr != null)
+        {
+            errorText = taskErr.InnerException?.Message ?? taskErr.Message;
+            return false;
+        }
+        if (resultCode is 2 or 3) return true;
+        errorText = hr != 0 ? $"Kurulum Kodu {resultCode} (0x{hr:X8})" : $"Kurulum Kodu {resultCode}";
+        return false;
     }
 
     private static void RunPnpRescan()
