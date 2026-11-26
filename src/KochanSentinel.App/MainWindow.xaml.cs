@@ -547,6 +547,7 @@ public partial class MainWindow : FluentWindow
         _trayIcon.Visible = false;
         _trayIcon.Dispose();
         _miniHud.Close();
+        _vm.CleanupHardwareStudioOnExit();
         _vm.Dispose();
     }
 }

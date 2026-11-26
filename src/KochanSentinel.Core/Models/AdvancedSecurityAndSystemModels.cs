@@ -161,7 +161,32 @@ public sealed class DriverAuditItem
     public string Recommendation { get; set; } = "";
     public FindingSeverity Severity { get; set; } = FindingSeverity.Info;
     public bool IsPendingWindowsUpdate { get; set; }
+    public bool IsMissingDevice { get; set; }
     public string UpdateId { get; set; } = "";
+    public string HardwareId { get; set; } = "";
+    public string SizeText { get; set; } = "—";
+    public bool HasAction => IsPendingWindowsUpdate || IsMissingDevice || Severity == FindingSeverity.Medium;
+    public string ActionLabel => IsPendingWindowsUpdate
+        ? "Kur"
+        : IsMissingDevice
+            ? "Katalogda Ara"
+            : Severity == FindingSeverity.Medium
+                ? "Güncelleme Ara"
+                : "";
+}
+
+public sealed class DriverInstallProgress
+{
+    public string Phase { get; set; } = "Hazırlanıyor";
+    public double Percent { get; set; }
+    public int CurrentIndex { get; set; }
+    public int TotalCount { get; set; }
+    public string CurrentDriverName { get; set; } = "";
+    public double SpeedMbps { get; set; }
+    public long BytesDownloaded { get; set; }
+    public long TotalBytes { get; set; }
+    public string ElapsedText { get; set; } = "00:00";
+    public string DetailText { get; set; } = "";
 }
 
 // --- Monitor & Color Calibration Models ---
@@ -179,6 +204,7 @@ public sealed class MonitorDisplayInfo
     public int BitsPerPixel { get; set; }
     public string IccProfileName { get; set; } = "Varsayılan (Profil Yok)";
     public bool SupportsDdcBrightness { get; set; }
+    public bool IsLaptopInternalPanel { get; set; }
     public int CurrentBrightness { get; set; } = -1;
     public int CurrentContrast { get; set; } = -1;
     public bool NeedsRefreshRateBoost => MaxRefreshHz > CurrentRefreshHz && MaxRefreshHz >= 75;
@@ -188,16 +214,39 @@ public sealed class MonitorDisplayInfo
     public string RecommendationsText => string.Join("\n• ", Recommendations);
 }
 
-public sealed class ColorProfilePreset
+public sealed class ColorProfilePreset : System.ComponentModel.INotifyPropertyChanged
 {
     public string Id { get; set; } = "";
     public string Name { get; set; } = "";
     public string Description { get; set; } = "";
+    public string BadgeText { get; set; } = "";
+    public string Swatch1 { get; set; } = "#E4E4E7";
+    public string Swatch2 { get; set; } = "#A1A1AA";
+    public string Swatch3 { get; set; } = "#52525B";
     public double Gamma { get; set; } = 1.0;
+    public double Contrast { get; set; } = 1.0;
+    public double Saturation { get; set; } = 1.0;
     public double RedScale { get; set; } = 1.0;
     public double GreenScale { get; set; } = 1.0;
     public double BlueScale { get; set; } = 1.0;
     public double BrightnessLift { get; set; } = 0.0;
+
+    private bool _isActive;
+    public bool IsActive
+    {
+        get => _isActive;
+        set
+        {
+            if (_isActive == value) return;
+            _isActive = value;
+            PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(nameof(IsActive)));
+            PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(nameof(ActionButtonText)));
+        }
+    }
+
+    public string ActionButtonText => IsActive ? "✓ Aktif" : "Uygula";
+
+    public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged;
 }
 
 // --- Unused Windows Services & Background Bloat Audit Models ---

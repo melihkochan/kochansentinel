@@ -7,8 +7,8 @@
                  Title="KOCHAN Sentinel"
                  Width="1260"
                  Height="800"
-                 MinWidth="1040"
-                 MinHeight="690"
+                 MinWidth="1020"
+                 MinHeight="600"
                  Background="#09090B"
                  WindowStartupLocation="CenterScreen"
                  WindowBackdropType="None"
@@ -68,31 +68,31 @@
         <!-- Main Body: Left Sidebar + Content -->
         <Grid Grid.Row="2" Margin="12,6,12,6">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="228" />
+                <ColumnDefinition Width="236" />
                 <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
 
             <!-- Sidebar (shadcn Zinc-950) -->
-            <Border Grid.Column="0" Background="#111113" CornerRadius="8" Padding="12" Margin="0,0,12,0" BorderBrush="#27272A" BorderThickness="1">
+            <Border Grid.Column="0" Background="#111113" CornerRadius="8" Padding="10" Margin="0,0,12,0" BorderBrush="#27272A" BorderThickness="1">
                 <Border.Resources>
                     <Style x:Key="NavRadioStyle" TargetType="RadioButton">
                         <Setter Property="Foreground" Value="#A1A1AA" />
-                        <Setter Property="FontSize" Value="13" />
+                        <Setter Property="FontSize" Value="12.5" />
                         <Setter Property="Cursor" Value="Hand" />
-                        <Setter Property="Margin" Value="0,2" />
+                        <Setter Property="Margin" Value="0,1" />
                         <Setter Property="GroupName" Value="MainNav" />
                         <Setter Property="Template">
                             <Setter.Value>
                                 <ControlTemplate TargetType="RadioButton">
-                                    <Border x:Name="Bg" Background="Transparent" CornerRadius="6" Padding="0,8,10,8">
+                                    <Border x:Name="Bg" Background="Transparent" CornerRadius="6" Padding="0,6,8,6">
                                         <Grid>
                                             <Grid.ColumnDefinitions>
                                                 <ColumnDefinition Width="4" />
                                                 <ColumnDefinition Width="*" />
                                             </Grid.ColumnDefinitions>
-                                            <Border x:Name="Indicator" Grid.Column="0" Width="3" Height="16" CornerRadius="2"
+                                            <Border x:Name="Indicator" Grid.Column="0" Width="3" Height="15" CornerRadius="2"
                                                     Background="#FAFAFA" Visibility="Collapsed" VerticalAlignment="Center" />
-                                            <ContentPresenter Grid.Column="1" Margin="10,0,0,0" VerticalAlignment="Center" />
+                                            <ContentPresenter Grid.Column="1" Margin="9,0,0,0" VerticalAlignment="Center" />
                                         </Grid>
                                     </Border>
                                     <ControlTemplate.Triggers>
@@ -115,13 +115,13 @@
                         <Setter Property="FontSize" Value="10" />
                         <Setter Property="FontWeight" Value="SemiBold" />
                         <Setter Property="Foreground" Value="#71717A" />
-                        <Setter Property="Margin" Value="8,12,0,4" />
+                        <Setter Property="Margin" Value="8,9,0,3" />
                     </Style>
                 </Border.Resources>
 
                 <DockPanel>
                     <!-- Brand & Logo Header Card (Linear/Vercel style) -->
-                    <Border DockPanel.Dock="Top" Background="#18181B" CornerRadius="8" Padding="10" Margin="2,2,2,12" BorderBrush="#27272A" BorderThickness="1">
+                    <Border DockPanel.Dock="Top" Background="#18181B" CornerRadius="8" Padding="9,8" Margin="2,0,2,8" BorderBrush="#27272A" BorderThickness="1">
                         <StackPanel>
                             <Grid>
                                 <Grid.ColumnDefinitions>
@@ -129,12 +129,12 @@
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
-                                <Border Grid.Column="0" Width="34" Height="34" CornerRadius="7" ClipToBounds="True" BorderBrush="#27272A" BorderThickness="1">
+                                <Border Grid.Column="0" Width="32" Height="32" CornerRadius="7" ClipToBounds="True" BorderBrush="#27272A" BorderThickness="1">
                                     <Image Source="/Assets/logo.png" Stretch="UniformToFill" />
                                 </Border>
                                 <StackPanel Grid.Column="1" Margin="9,0,6,0" VerticalAlignment="Center">
-                                    <TextBlock Text="KOCHAN" FontSize="14.5" FontWeight="Bold" Foreground="#FAFAFA" />
-                                    <TextBlock Text="SENTINEL GUARD" FontSize="9.5" Foreground="#71717A" FontWeight="SemiBold" Margin="0,1,0,0" />
+                                    <TextBlock Text="KOCHAN" FontSize="14" FontWeight="Bold" Foreground="#FAFAFA" />
+                                    <TextBlock Text="SENTINEL GUARD" FontSize="9" Foreground="#71717A" FontWeight="SemiBold" Margin="0,1,0,0" />
                                 </StackPanel>
                                 <Border Grid.Column="2" Background="#09090B" CornerRadius="5" Padding="6,2" VerticalAlignment="Top" BorderBrush="#27272A" BorderThickness="1">
                                     <TextBlock Text="{Binding AppVersionText}" FontSize="9.5" FontWeight="SemiBold" Foreground="#A1A1AA" />
@@ -142,7 +142,7 @@
                             </Grid>
 
                             <!-- Full-width Privilege Strip -->
-                            <Border Background="#111113" CornerRadius="6" Padding="8,5" Margin="0,9,0,0" BorderBrush="#27272A" BorderThickness="1"
+                            <Border Background="#111113" CornerRadius="6" Padding="8,4" Margin="0,7,0,0" BorderBrush="#27272A" BorderThickness="1"
                                     Visibility="{Binding Metrics.IsElevated, Converter={StaticResource InvBoolToVis}}">
                                 <Grid>
                                     <Grid.ColumnDefinitions>
@@ -155,7 +155,7 @@
                                     <Path Grid.Column="2" Style="{StaticResource ShadcnIconPath}" Data="{StaticResource GeoLock}" Width="11" Height="11" Stroke="#71717A" />
                                 </Grid>
                             </Border>
-                            <Border Background="#062815" CornerRadius="6" Padding="8,5" Margin="0,9,0,0" BorderBrush="#14532D" BorderThickness="1"
+                            <Border Background="#062815" CornerRadius="6" Padding="8,4" Margin="0,7,0,0" BorderBrush="#14532D" BorderThickness="1"
                                     Visibility="{Binding Metrics.IsElevated, Converter={StaticResource BoolToVis}}">
                                 <Grid>
                                     <Grid.ColumnDefinitions>
@@ -170,7 +170,7 @@
                             </Border>
 
                             <!-- Command Palette Trigger (Ctrl+K) -->
-                            <Button Style="{StaticResource ShadcnSecondaryBtn}" Margin="0,8,0,0" Padding="8,5" HorizontalContentAlignment="Stretch"
+                            <Button Style="{StaticResource ShadcnSecondaryBtn}" Margin="0,6,0,0" Padding="8,4" HorizontalContentAlignment="Stretch"
                                     Command="{Binding OpenCommandPaletteCommand}" ToolTip="Tüm araçlara ve sayfalara hızlı erişim (Ctrl + K)">
                                 <Grid>
                                     <Grid.ColumnDefinitions>
@@ -188,93 +188,100 @@
                         </StackPanel>
                     </Border>
 
-                    <!-- Bottom Circular Health Ring -->
-                    <StackPanel DockPanel.Dock="Bottom" Margin="2,10,2,2">
-                        <Border Background="#18181B" CornerRadius="8" Padding="12" BorderBrush="#27272A" BorderThickness="1">
-                            <StackPanel HorizontalAlignment="Center">
-                                <TextBlock Text="Sistem Sağlığı" FontSize="11" FontWeight="SemiBold" Foreground="#A1A1AA" HorizontalAlignment="Center" Margin="0,0,0,8" />
-                                <Grid Width="76" Height="76" HorizontalAlignment="Center">
-                                    <ui:ProgressRing Progress="{Binding Metrics.HealthScore, Mode=OneWay}" IsIndeterminate="False"
-                                                     Width="76" Height="76" Foreground="{Binding Metrics.HealthScore, Converter={StaticResource HealthToBrush}}" />
-                                    <TextBlock Text="{Binding Metrics.HealthScore}" FontSize="21" FontWeight="Bold" Foreground="#FAFAFA"
-                                               VerticalAlignment="Center" HorizontalAlignment="Center" />
-                                </Grid>
-                                <TextBlock Text="{Binding Metrics.HealthStatusText}" FontSize="11"
+                    <!-- Bottom Compact Health Card (never clips nav items on small screens) -->
+                    <Border DockPanel.Dock="Bottom" Background="#18181B" CornerRadius="8" Padding="10,9" Margin="2,8,2,0" BorderBrush="#27272A" BorderThickness="1">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Grid Grid.Column="0" Width="52" Height="52" VerticalAlignment="Center" Margin="0,0,10,0">
+                                <ui:ProgressRing Progress="{Binding Metrics.HealthScore, Mode=OneWay}" IsIndeterminate="False"
+                                                 Width="52" Height="52" Foreground="{Binding Metrics.HealthScore, Converter={StaticResource HealthToBrush}}" />
+                                <TextBlock Text="{Binding Metrics.HealthScore}" FontSize="16" FontWeight="Bold" Foreground="#FAFAFA"
+                                           VerticalAlignment="Center" HorizontalAlignment="Center" />
+                            </Grid>
+                            <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                <TextBlock Text="Sistem Sağlığı" FontSize="10.5" FontWeight="SemiBold" Foreground="#A1A1AA" />
+                                <TextBlock Text="{Binding Metrics.HealthStatusText}" FontSize="11.5"
                                            Foreground="{Binding Metrics.HealthScore, Converter={StaticResource HealthToBrush}}" FontWeight="SemiBold"
-                                           HorizontalAlignment="Center" Margin="0,6,0,2" TextAlignment="Center" TextWrapping="Wrap" />
-                                <TextBlock Text="{Binding LastScanLabel}" FontSize="10" Foreground="#71717A" HorizontalAlignment="Center" />
+                                           Margin="0,2,0,2" TextWrapping="Wrap" />
+                                <TextBlock Text="{Binding LastScanLabel}" FontSize="9.5" Foreground="#71717A" TextTrimming="CharacterEllipsis" />
                             </StackPanel>
-                        </Border>
-                    </StackPanel>
+                        </Grid>
+                    </Border>
 
-                    <!-- Categorized Nav Items -->
-                    <StackPanel>
-                        <TextBlock Text="İZLEME" Style="{StaticResource NavCategoryStyle}" Margin="8,2,0,4" />
-                        <RadioButton x:Name="NavRadioDashboard" Style="{StaticResource NavRadioStyle}" Tag="0" IsChecked="True" Checked="NavRadio_Checked">
-                            <StackPanel Orientation="Horizontal">
-                                <ui:SymbolIcon Symbol="Home24" FontSize="16" Margin="0,0,10,0" />
-                                <TextBlock Text="Genel Bakış" VerticalAlignment="Center" />
-                            </StackPanel>
-                        </RadioButton>
-                        <RadioButton x:Name="NavRadioMonitor" Style="{StaticResource NavRadioStyle}" Tag="1" Checked="NavRadio_Checked">
-                            <StackPanel Orientation="Horizontal">
-                                <ui:SymbolIcon Symbol="Pulse24" FontSize="16" Margin="0,0,10,0" />
-                                <TextBlock Text="Canlı Monitör" VerticalAlignment="Center" />
-                            </StackPanel>
-                        </RadioButton>
+                    <!-- Scrollable Categorized Nav Items -->
+                    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                                  PanningMode="VerticalOnly" Focusable="False" Padding="0,0,2,0">
+                        <StackPanel>
+                            <TextBlock Text="İZLEME" Style="{StaticResource NavCategoryStyle}" Margin="8,2,0,3" />
+                            <RadioButton x:Name="NavRadioDashboard" Style="{StaticResource NavRadioStyle}" Tag="0" IsChecked="True" Checked="NavRadio_Checked">
+                                <StackPanel Orientation="Horizontal">
+                                    <ui:SymbolIcon Symbol="Home24" FontSize="16" Margin="0,0,10,0" />
+                                    <TextBlock Text="Genel Bakış" VerticalAlignment="Center" />
+                                </StackPanel>
+                            </RadioButton>
+                            <RadioButton x:Name="NavRadioMonitor" Style="{StaticResource NavRadioStyle}" Tag="1" Checked="NavRadio_Checked">
+                                <StackPanel Orientation="Horizontal">
+                                    <ui:SymbolIcon Symbol="Pulse24" FontSize="16" Margin="0,0,10,0" />
+                                    <TextBlock Text="Canlı Monitör" VerticalAlignment="Center" />
+                                </StackPanel>
+                            </RadioButton>
 
-                        <TextBlock Text="OPTİMİZASYON" Style="{StaticResource NavCategoryStyle}" />
-                        <RadioButton x:Name="NavRadioCleaner" Style="{StaticResource NavRadioStyle}" Tag="2" Checked="NavRadio_Checked">
-                            <StackPanel Orientation="Horizontal">
-                                <ui:SymbolIcon Symbol="Broom24" FontSize="16" Margin="0,0,10,0" />
-                                <TextBlock Text="Temizlik &amp; RAM" VerticalAlignment="Center" />
-                            </StackPanel>
-                        </RadioButton>
-                        <RadioButton x:Name="NavRadioDisk" Style="{StaticResource NavRadioStyle}" Tag="7" Checked="NavRadio_Checked">
-                            <StackPanel Orientation="Horizontal">
-                                <Path Data="M2,5 A2,2 0 0 1 4,3 H9 L11,5 H20 A2,2 0 0 1 22,7 V19 A2,2 0 0 1 20,21 H4 A2,2 0 0 1 2,19 Z"
-                                      Width="15" Height="15" Stretch="Uniform" VerticalAlignment="Center" Margin="0,0,11,0"
-                                      Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}" StrokeThickness="1.8" />
-                                <TextBlock Text="Disk Analizi" VerticalAlignment="Center" />
-                            </StackPanel>
-                        </RadioButton>
-                        <RadioButton x:Name="NavRadioGames" Style="{StaticResource NavRadioStyle}" Tag="3" Checked="NavRadio_Checked">
-                            <StackPanel Orientation="Horizontal">
-                                <ui:SymbolIcon Symbol="Games24" FontSize="16" Margin="0,0,10,0" />
-                                <TextBlock Text="Oyun Merkezi" VerticalAlignment="Center" />
-                            </StackPanel>
-                        </RadioButton>
-                        <RadioButton x:Name="NavRadioBenchmark" Style="{StaticResource NavRadioStyle}" Tag="6" Checked="NavRadio_Checked">
-                            <StackPanel Orientation="Horizontal">
-                                <Path Data="M3,13 H6.5 V21 H3 Z M10.2,6 H13.7 V21 H10.2 Z M17.5,2 H21 V21 H17.5 Z"
-                                      Width="15" Height="15" Stretch="Uniform" VerticalAlignment="Center" Margin="0,0,11,0"
-                                      Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}" />
-                                <TextBlock Text="Sistem Benchmark" VerticalAlignment="Center" />
-                            </StackPanel>
-                        </RadioButton>
-                        <RadioButton x:Name="NavRadioStudio" Style="{StaticResource NavRadioStyle}" Tag="8" Checked="NavRadio_Checked">
-                            <StackPanel Orientation="Horizontal">
-                                <Path Data="M2,4 H22 V16 H2 Z M8,20 H16 M12,16 V20"
-                                      Width="15" Height="15" Stretch="Uniform" VerticalAlignment="Center" Margin="0,0,11,0"
-                                      Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}" StrokeThickness="1.8" />
-                                <TextBlock Text="Ekran, Sürücü &amp; Servis" VerticalAlignment="Center" />
-                            </StackPanel>
-                        </RadioButton>
+                            <TextBlock Text="OPTİMİZASYON" Style="{StaticResource NavCategoryStyle}" />
+                            <RadioButton x:Name="NavRadioCleaner" Style="{StaticResource NavRadioStyle}" Tag="2" Checked="NavRadio_Checked">
+                                <StackPanel Orientation="Horizontal">
+                                    <ui:SymbolIcon Symbol="Broom24" FontSize="16" Margin="0,0,10,0" />
+                                    <TextBlock Text="Temizlik &amp; RAM" VerticalAlignment="Center" />
+                                </StackPanel>
+                            </RadioButton>
+                            <RadioButton x:Name="NavRadioDisk" Style="{StaticResource NavRadioStyle}" Tag="7" Checked="NavRadio_Checked">
+                                <StackPanel Orientation="Horizontal">
+                                    <Path Data="M2,5 A2,2 0 0 1 4,3 H9 L11,5 H20 A2,2 0 0 1 22,7 V19 A2,2 0 0 1 20,21 H4 A2,2 0 0 1 2,19 Z"
+                                          Width="15" Height="15" Stretch="Uniform" VerticalAlignment="Center" Margin="0,0,11,0"
+                                          Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}" StrokeThickness="1.8" />
+                                    <TextBlock Text="Disk Analizi" VerticalAlignment="Center" />
+                                </StackPanel>
+                            </RadioButton>
+                            <RadioButton x:Name="NavRadioGames" Style="{StaticResource NavRadioStyle}" Tag="3" Checked="NavRadio_Checked">
+                                <StackPanel Orientation="Horizontal">
+                                    <ui:SymbolIcon Symbol="Games24" FontSize="16" Margin="0,0,10,0" />
+                                    <TextBlock Text="Oyun Merkezi" VerticalAlignment="Center" />
+                                </StackPanel>
+                            </RadioButton>
+                            <RadioButton x:Name="NavRadioBenchmark" Style="{StaticResource NavRadioStyle}" Tag="6" Checked="NavRadio_Checked">
+                                <StackPanel Orientation="Horizontal">
+                                    <Path Data="M3,13 H6.5 V21 H3 Z M10.2,6 H13.7 V21 H10.2 Z M17.5,2 H21 V21 H17.5 Z"
+                                          Width="15" Height="15" Stretch="Uniform" VerticalAlignment="Center" Margin="0,0,11,0"
+                                          Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}" />
+                                    <TextBlock Text="Sistem Benchmark" VerticalAlignment="Center" />
+                                </StackPanel>
+                            </RadioButton>
+                            <RadioButton x:Name="NavRadioStudio" Style="{StaticResource NavRadioStyle}" Tag="8" Checked="NavRadio_Checked">
+                                <StackPanel Orientation="Horizontal">
+                                    <Path Data="M2,4 H22 V16 H2 Z M8,20 H16 M12,16 V20"
+                                          Width="15" Height="15" Stretch="Uniform" VerticalAlignment="Center" Margin="0,0,11,0"
+                                          Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}" StrokeThickness="1.8" />
+                                    <TextBlock Text="Ekran, Sürücü &amp; Servis" VerticalAlignment="Center" />
+                                </StackPanel>
+                            </RadioButton>
 
-                        <TextBlock Text="SİSTEM &amp; KORUMA" Style="{StaticResource NavCategoryStyle}" />
-                        <RadioButton x:Name="NavRadioSecurity" Style="{StaticResource NavRadioStyle}" Tag="4" Checked="NavRadio_Checked">
-                            <StackPanel Orientation="Horizontal">
-                                <ui:SymbolIcon Symbol="ShieldCheckmark24" FontSize="16" Margin="0,0,10,0" />
-                                <TextBlock Text="Güvenlik &amp; Kalıntı" VerticalAlignment="Center" />
-                            </StackPanel>
-                        </RadioButton>
-                        <RadioButton x:Name="NavRadioSettings" Style="{StaticResource NavRadioStyle}" Tag="5" Checked="NavRadio_Checked">
-                            <StackPanel Orientation="Horizontal">
-                                <ui:SymbolIcon Symbol="Settings24" FontSize="16" Margin="0,0,10,0" />
-                                <TextBlock Text="Ayarlar" VerticalAlignment="Center" />
-                            </StackPanel>
-                        </RadioButton>
-                    </StackPanel>
+                            <TextBlock Text="SİSTEM &amp; KORUMA" Style="{StaticResource NavCategoryStyle}" />
+                            <RadioButton x:Name="NavRadioSecurity" Style="{StaticResource NavRadioStyle}" Tag="4" Checked="NavRadio_Checked">
+                                <StackPanel Orientation="Horizontal">
+                                    <ui:SymbolIcon Symbol="ShieldCheckmark24" FontSize="16" Margin="0,0,10,0" />
+                                    <TextBlock Text="Güvenlik &amp; Kalıntı" VerticalAlignment="Center" />
+                                </StackPanel>
+                            </RadioButton>
+                            <RadioButton x:Name="NavRadioSettings" Style="{StaticResource NavRadioStyle}" Tag="5" Checked="NavRadio_Checked">
+                                <StackPanel Orientation="Horizontal">
+                                    <ui:SymbolIcon Symbol="Settings24" FontSize="16" Margin="0,0,10,0" />
+                                    <TextBlock Text="Ayarlar" VerticalAlignment="Center" />
+                                </StackPanel>
+                            </RadioButton>
+                        </StackPanel>
+                    </ScrollViewer>
                 </DockPanel>
             </Border>
 

@@ -14,8 +14,9 @@ namespace KochanSentinel.Core.Services;
 /// Full Monitor &amp; Color Calibration Service:
 /// - Enumerates active monitors, resolutions, current vs max refresh rate (Hz), bit depth, and ICC profiles.
 /// - One-click Max Refresh Rate upgrade (ChangeDisplaySettingsEx).
-/// - Live Hardware Brightness &amp; Contrast via DDC/CI (dxva2.dll) or WMI (laptops).
-/// - Instant reversible Color &amp; Gamma Ramp presets (FPS Clarity, sRGB, Night Eye-Care, Cinema, Default).
+/// - Real-time DWM GPU Color Matrix (Magnification.dll) that works reliably on Windows 10 &amp; Windows 11 24H2
+///   even when GDI SetDeviceGammaRamp is ignored or DDC/CI is disabled/ignored by monitor firmware.
+/// - Optional Hardware Brightness &amp; Contrast via DDC/CI (dxva2.dll) or WMI (laptops).
 /// </summary>
 public sealed class DisplayAndColorService
 {
@@ -24,6 +25,9 @@ public sealed class DisplayAndColorService
     private const int DISP_CHANGE_SUCCESSFUL = 0;
     private const int DISPLAY_DEVICE_ACTIVE = 0x00000001;
     private const int DISPLAY_DEVICE_PRIMARY_DEVICE = 0x00000004;
+
+    private bool _magInitialized;
+    private bool _gdiResetOnce;
 
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
     private struct DISPLAY_DEVICEW
@@ -80,6 +84,13 @@ public sealed class DisplayAndColorService
     }
 
     [StructLayout(LayoutKind.Sequential)]
+    private struct MAGCOLOREFFECT
+    {
+        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 25)]
+        public float[] transform;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
     private struct RECT { public int Left, Top, Right, Bottom; }
 
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
@@ -125,6 +136,15 @@ public sealed class DisplayAndColorService
     [DllImport("gdi32.dll")]
     private static extern bool SetDeviceGammaRamp(IntPtr hDC, ref RAMP lpRamp);
 
+    [DllImport("Magnification.dll", SetLastError = true)]
+    private static extern bool MagInitialize();
+
+    [DllImport("Magnification.dll", SetLastError = true)]
+    private static extern bool MagUninitialize();
+
+    [DllImport("Magnification.dll", SetLastError = true)]
+    private static extern bool MagSetFullscreenColorEffect(ref MAGCOLOREFFECT pEffect);
+
     [DllImport("mscms.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     private static extern bool GetICMProfileW(IntPtr hDC, ref uint lpcbName, StringBuilder? lpszFilename);
 
@@ -151,11 +171,61 @@ public sealed class DisplayAndColorService
 
     public static List<ColorProfilePreset> GetColorPresets() => new()
     {
-        new() { Id = "default", Name = "Varsayılan (Standart 6500K)", Description = "Windows standart 2.2 gama ve nötr beyaz dengesi — tüm renk değişikliklerini sıfırlar.", Gamma = 1.0, RedScale = 1.0, GreenScale = 1.0, BlueScale = 1.0, BrightnessLift = 0.0 },
-        new() { Id = "fps_clarity", Name = "FPS / Rekabetçi Oyun Netliği", Description = "Karanlık gölgeleri hafifçe açar ve kontrast keskinliğini artırarak rakipleri seçmeyi kolaylaştırır.", Gamma = 1.16, RedScale = 1.0, GreenScale = 1.0, BlueScale = 0.98, BrightnessLift = 0.04 },
-        new() { Id = "srgb_design", Name = "Tasarım / Dengeli sRGB", Description = "Aşırı soğuk/mavi panel sapmasını hafifçe nötrleştirerek daha doğal cilt ve gri tonları sunar.", Gamma = 0.98, RedScale = 1.0, GreenScale = 0.98, BlueScale = 0.94, BrightnessLift = 0.0 },
-        new() { Id = "cinema_deep", Name = "Sinema / Derin Siyahlar", Description = "Gama eğrisini sinematik 2.35 seviyesine yaklaştırarak film ve hikayeli oyunlarda siyah derinliğini artırır.", Gamma = 0.90, RedScale = 1.0, GreenScale = 0.99, BlueScale = 0.96, BrightnessLift = -0.01 },
-        new() { Id = "night_care", Name = "Gece / Göz Koruma (4500K)", Description = "Mavi ışık spektrumunu %28 azaltır; gece uzun süre bilgisayar başında göz yorgunluğunu düşürür.", Gamma = 1.02, RedScale = 1.0, GreenScale = 0.89, BlueScale = 0.72, BrightnessLift = 0.0 }
+        new()
+        {
+            Id = "default",
+            Name = "Varsayılan (Standart 6500K)",
+            BadgeText = "6500K Nötr",
+            Description = "Tüm renk, canlılık ve kontrast efektlerini sıfırlayarak panelin doğal görüntüsüne döner.",
+            Swatch1 = "#F4F4F5", Swatch2 = "#A1A1AA", Swatch3 = "#52525B",
+            Gamma = 1.0, Contrast = 1.0, Saturation = 1.0, RedScale = 1.0, GreenScale = 1.0, BlueScale = 1.0, BrightnessLift = 0.0,
+            IsActive = true
+        },
+        new()
+        {
+            Id = "fps_clarity",
+            Name = "FPS / Rekabetçi Oyun (Digital Vibrance)",
+            BadgeText = "Vibrance +32%",
+            Description = "Renk canlılığını (+%32) ve karanlık gölge detaylarını artırarak FPS oyunlarında rakipleri seçmeyi kolaylaştırır.",
+            Swatch1 = "#22C55E", Swatch2 = "#38BDF8", Swatch3 = "#FACC15",
+            Gamma = 1.0, Contrast = 1.09, Saturation = 1.32, RedScale = 1.0, GreenScale = 1.0, BlueScale = 0.98, BrightnessLift = 0.035
+        },
+        new()
+        {
+            Id = "vivid_hdr",
+            Name = "Canlı / Zengin Renkler",
+            BadgeText = "Canlı +22%",
+            Description = "Soluk IPS/VA panellere daha doygun renkler ve belirgin kontrast derinliği kazandırır.",
+            Swatch1 = "#F43F5E", Swatch2 = "#A855F7", Swatch3 = "#3B82F6",
+            Gamma = 1.0, Contrast = 1.12, Saturation = 1.22, RedScale = 1.0, GreenScale = 1.0, BlueScale = 1.0, BrightnessLift = 0.0
+        },
+        new()
+        {
+            Id = "srgb_design",
+            Name = "Tasarım / Dengeli sRGB",
+            BadgeText = "Doğal sRGB",
+            Description = "Soğuk/mavi fabrika panel sapmasını nötrleştirerek daha doğal cilt ve nötr gri tonları sunar.",
+            Swatch1 = "#F8FAFC", Swatch2 = "#FDE68A", Swatch3 = "#93C5FD",
+            Gamma = 1.0, Contrast = 1.0, Saturation = 0.95, RedScale = 1.0, GreenScale = 0.96, BlueScale = 0.89, BrightnessLift = 0.0
+        },
+        new()
+        {
+            Id = "cinema_deep",
+            Name = "Sinema / Derin Siyahlar",
+            BadgeText = "Sinema 2.35",
+            Description = "Siyah derinliğini ve sinematik kontrastı artırarak film ve hikayeli oyunlarda atmosferi güçlendirir.",
+            Swatch1 = "#F97316", Swatch2 = "#9A3412", Swatch3 = "#27272A",
+            Gamma = 1.0, Contrast = 1.16, Saturation = 1.06, RedScale = 1.0, GreenScale = 0.98, BlueScale = 0.93, BrightnessLift = -0.035
+        },
+        new()
+        {
+            Id = "night_care",
+            Name = "Gece / Göz Koruma (4500K)",
+            BadgeText = "Mavi Işık -%36",
+            Description = "Mavi ışık spektrumunu %36 azaltıp sıcak amber ton uygular; gece kullanımında göz yorgunluğunu düşürür.",
+            Swatch1 = "#F59E0B", Swatch2 = "#EA580C", Swatch3 = "#78350F",
+            Gamma = 1.0, Contrast = 0.97, Saturation = 0.92, RedScale = 1.0, GreenScale = 0.84, BlueScale = 0.62, BrightnessLift = 0.0
+        }
     };
 
     public List<MonitorDisplayInfo> InspectMonitors(string gpuName = "")
@@ -175,7 +245,6 @@ public sealed class DisplayAndColorService
             if (!EnumDisplaySettingsExW(adapter.DeviceName, ENUM_CURRENT_SETTINGS, ref currentMode, 0))
                 continue;
 
-            // Find monitor friendly name
             string friendly = adapter.DeviceString;
             var monDev = new DISPLAY_DEVICEW { cb = Marshal.SizeOf<DISPLAY_DEVICEW>() };
             if (EnumDisplayDevicesW(adapter.DeviceName, 0, ref monDev, 0) && !string.IsNullOrWhiteSpace(monDev.DeviceString))
@@ -183,11 +252,9 @@ public sealed class DisplayAndColorService
             if (wmiNames.Count > results.Count && !string.IsNullOrWhiteSpace(wmiNames[results.Count]))
                 friendly = wmiNames[results.Count];
 
-            // Scan all supported modes to find native max resolution & max Hz at current/native resolution
             int maxW = currentMode.dmPelsWidth;
             int maxH = currentMode.dmPelsHeight;
             int maxHzAtCurrent = currentMode.dmDisplayFrequency;
-            int maxHzOverall = currentMode.dmDisplayFrequency;
 
             var probe = new DEVMODEW { dmSize = (short)Marshal.SizeOf<DEVMODEW>() };
             for (int modeNum = 0; EnumDisplaySettingsExW(adapter.DeviceName, modeNum, ref probe, 0); modeNum++)
@@ -202,13 +269,12 @@ public sealed class DisplayAndColorService
                 {
                     maxHzAtCurrent = probe.dmDisplayFrequency;
                 }
-                if (probe.dmDisplayFrequency > maxHzOverall)
-                    maxHzOverall = probe.dmDisplayFrequency;
             }
 
             string iccName = ReadIccProfileName(adapter.DeviceName);
             int curBright = -1, curContrast = -1;
             bool supportsDdc = false;
+            bool isLaptopPanel = false;
 
             if (hmonByDevice.TryGetValue(adapter.DeviceName, out IntPtr hMon))
             {
@@ -222,6 +288,7 @@ public sealed class DisplayAndColorService
             if (!supportsDdc && laptopBrightness.HasValue && (adapter.StateFlags & DISPLAY_DEVICE_PRIMARY_DEVICE) != 0)
             {
                 supportsDdc = true;
+                isLaptopPanel = true;
                 curBright = laptopBrightness.Value;
             }
 
@@ -239,6 +306,7 @@ public sealed class DisplayAndColorService
                 BitsPerPixel = currentMode.dmBitsPerPel,
                 IccProfileName = iccName,
                 SupportsDdcBrightness = supportsDdc,
+                IsLaptopInternalPanel = isLaptopPanel,
                 CurrentBrightness = curBright,
                 CurrentContrast = curContrast
             };
@@ -263,12 +331,12 @@ public sealed class DisplayAndColorService
 
         if (info.Width < info.MaxWidth || info.Height < info.MaxHeight)
         {
-            info.Recommendations.Add($"Çözünürlük doğal panel çözünürlüğünün ({info.MaxWidth}x{info.MaxHeight}) altında — bulanıklık olmaması için doğal çözünürlük önerilir.");
+            info.Recommendations.Add($"Çözünürlük doğal panel çözünürlüğünün ({info.MaxWidth}x{info.MaxHeight}) altında — net görüntü için doğal çözünürlük önerilir.");
         }
 
         if (info.IccProfileName.Contains("Profil Yok", StringComparison.OrdinalIgnoreCase))
         {
-            info.Recommendations.Add("Özel ICC renk profili atanmamış. Doğru beyaz dengesi için aşağıdan sRGB/Tasarım ön ayarını deneyebilir veya Windows Renk Kalibrasyonunu (dccw) çalıştırabilirsiniz.");
+            info.Recommendations.Add("Özel ICC profili atanmamış. Sağdaki canlı DWM renk profillerini anında test edebilir veya Windows Renk Kalibrasyonunu (dccw) kullanabilirsin.");
         }
         else
         {
@@ -277,16 +345,11 @@ public sealed class DisplayAndColorService
 
         if (gpuName.Contains("NVIDIA", StringComparison.OrdinalIgnoreCase))
         {
-            info.Recommendations.Add("NVIDIA GPU tespit edildi: NVIDIA Denetim Masası → Çözünürlük Değiştirme altında 'Çıkış dinamik aralığı: Tam (0-255)' ayarını açmanız siyahları ve kontrastı ciddi iyileştirir. Geniş gamut (neon/aşırı doygun) monitörlerde 'novideo_srgb' önerilir.");
+            info.Recommendations.Add("NVIDIA GPU: NVIDIA Denetim Masası → Çözünürlük Değiştirme altında 'Çıkış dinamik aralığı: Tam (0-255)' ayarını açmanız siyahları ve kontrastı belirgin iyileştirir.");
         }
         else if (gpuName.Contains("AMD", StringComparison.OrdinalIgnoreCase) || gpuName.Contains("Radeon", StringComparison.OrdinalIgnoreCase))
         {
-            info.Recommendations.Add("AMD GPU tespit edildi: Adrenalin → Ekran → 'Özel Renk' bölümünde Renk Sıcaklığı Kontrolünü kapatıp 'Tam RGB 4:4:4' piksel biçimini seçmeniz en doğru sRGB renklerini verir.");
-        }
-
-        if (info.CurrentBrightness > 88)
-        {
-            info.Recommendations.Add($"Monitör parlaklığı oldukça yüksek (%{info.CurrentBrightness}). Uzun kullanımda göz yorgunluğu ve kontrast kaybını önlemek için %55–75 aralığı önerilir.");
+            info.Recommendations.Add("AMD GPU: Adrenalin → Ekran → 'Özel Renk' bölümünde 'Tam RGB 4:4:4' piksel biçimini seçmeniz en doğru renkleri verir.");
         }
     }
 
@@ -315,59 +378,163 @@ public sealed class DisplayAndColorService
         }
     }
 
-    public (bool Ok, string Message) ApplyColorPreset(MonitorDisplayInfo? monitor, ColorProfilePreset preset)
-    {
-        try
-        {
-            string device = monitor?.DeviceName ?? @"\\.\DISPLAY1";
-            IntPtr hdc = CreateDCW(null, device, null, IntPtr.Zero);
-            if (hdc == IntPtr.Zero)
-                return (false, "Ekran renk bağlamı (HDC) açılamadı.");
-
-            try
-            {
-                var ramp = new RAMP
-                {
-                    Red = new ushort[256],
-                    Green = new ushort[256],
-                    Blue = new ushort[256]
-                };
-
-                double invGamma = preset.Gamma > 0.2 ? (1.0 / preset.Gamma) : 1.0;
-                for (int i = 0; i < 256; i++)
-                {
-                    double norm = i / 255.0;
-                    double curved = i == 0 ? 0.0 : Math.Clamp(Math.Pow(norm, invGamma) + preset.BrightnessLift * (1.0 - norm) * norm * 4.0, 0.0, 1.0);
-                    ramp.Red[i] = (ushort)Math.Clamp(Math.Round(curved * preset.RedScale * 65535.0), 0, 65535);
-                    ramp.Green[i] = (ushort)Math.Clamp(Math.Round(curved * preset.GreenScale * 65535.0), 0, 65535);
-                    ramp.Blue[i] = (ushort)Math.Clamp(Math.Round(curved * preset.BlueScale * 65535.0), 0, 65535);
-                }
-
-                bool ok = SetDeviceGammaRamp(hdc, ref ramp);
-                return ok
-                    ? (true, $"\"{preset.Name}\" renk profili {monitor?.FriendlyName ?? "ekrana"} anında uygulandı.")
-                    : (false, "Ekran sürücüsü GDI Gama Rampasını kabul etmedi (HDR açıkken Windows gama kilitler).");
-            }
-            finally
-            {
-                DeleteDC(hdc);
-            }
-        }
-        catch (Exception ex)
-        {
-            return (false, $"Renk profili hatası: {ex.Message}");
-        }
-    }
-
     /// <summary>
-    /// Smooth software Gamma LUT fallback for monitors where DDC/CI is disabled in OSD.
-    /// brightnessPct: 10..100 (100 = full native brightness), contrastPct: 10..100 (50 = neutral).
+    /// MUST be called on the WPF UI (STA) thread.
+    /// Applies real-time GPU DWM Fullscreen Color Matrix via Windows Magnification.dll.
+    /// Works reliably on Windows 10 and Windows 11 24H2 even when GDI SetDeviceGammaRamp is ignored or DDC/CI is off.
     /// </summary>
-    public (bool Ok, string Message) ApplySoftwareBrightnessContrast(
+    public (bool Ok, string EngineName, string Message) ApplyLiveDwmColorAndBrightness(
         MonitorDisplayInfo? monitor,
         int brightnessPct,
         int contrastPct,
-        ColorProfilePreset? basePreset = null)
+        ColorProfilePreset preset)
+    {
+        try
+        {
+            if (!_gdiResetOnce)
+            {
+                _gdiResetOnce = true;
+                TryResetGdiGammaRamp(monitor?.DeviceName ?? @"\\.\DISPLAY1");
+            }
+
+            if (!_magInitialized)
+                _magInitialized = MagInitialize();
+
+            if (_magInitialized)
+            {
+                var effect = BuildColorMatrix(brightnessPct, contrastPct, preset);
+                if (MagSetFullscreenColorEffect(ref effect))
+                {
+                    bool isIdentity = IsNeutral(brightnessPct, contrastPct, preset);
+                    string msg = isIdentity
+                        ? "Ekran renkleri ve parlaklık standart (6500K / %100) değerine sıfırlandı."
+                        : $"DWM GPU Motoru aktif • Profil: {preset.Name} | Parlaklık %{brightnessPct} | Kontrast %{contrastPct}";
+                    return (true, "DWM GPU", msg);
+                }
+            }
+        }
+        catch { }
+
+        // Fallback to GDI Gamma LUT if Magnification.dll failed
+        var (ok, gdiMsg) = ApplyGdiGammaFallback(monitor, brightnessPct, contrastPct, preset);
+        return (ok, "GDI Gama", gdiMsg);
+    }
+
+    /// <summary>
+    /// Cleanly resets the fullscreen DWM color effect and uninitializes Magnification API on true app exit.
+    /// Must be called on the WPF UI thread.
+    /// </summary>
+    public void CleanupColorEngine()
+    {
+        if (!_magInitialized) return;
+        try
+        {
+            var identity = BuildIdentityMatrix();
+            MagSetFullscreenColorEffect(ref identity);
+            MagUninitialize();
+        }
+        catch { }
+        finally
+        {
+            _magInitialized = false;
+        }
+    }
+
+    private static bool IsNeutral(int brightnessPct, int contrastPct, ColorProfilePreset p)
+    {
+        return brightnessPct >= 99 &&
+               Math.Abs(contrastPct - 50) <= 1 &&
+               Math.Abs(p.Contrast - 1.0) < 0.005 &&
+               Math.Abs(p.Saturation - 1.0) < 0.005 &&
+               Math.Abs(p.RedScale - 1.0) < 0.005 &&
+               Math.Abs(p.GreenScale - 1.0) < 0.005 &&
+               Math.Abs(p.BlueScale - 1.0) < 0.005 &&
+               Math.Abs(p.BrightnessLift) < 0.002;
+    }
+
+    private static MAGCOLOREFFECT BuildIdentityMatrix() => new()
+    {
+        transform = new float[]
+        {
+            1f, 0f, 0f, 0f, 0f,
+            0f, 1f, 0f, 0f, 0f,
+            0f, 0f, 1f, 0f, 0f,
+            0f, 0f, 0f, 1f, 0f,
+            0f, 0f, 0f, 0f, 1f
+        }
+    };
+
+    private static MAGCOLOREFFECT BuildColorMatrix(int brightnessPct, int contrastPct, ColorProfilePreset p)
+    {
+        if (IsNeutral(brightnessPct, contrastPct, p))
+            return BuildIdentityMatrix();
+
+        float b = (float)Math.Clamp(brightnessPct / 100.0, 0.25, 1.0);
+        // Slider contrast: 50 -> 1.00, 10 -> 0.68, 100 -> 1.40
+        float sliderC = 1f + (float)((Math.Clamp(contrastPct, 10, 100) - 50.0) / 50.0 * 0.40);
+        float c = Math.Clamp(sliderC * (float)p.Contrast, 0.55f, 1.65f);
+        float sat = (float)Math.Clamp(p.Saturation, 0.2, 2.0);
+        float lift = (float)Math.Clamp(p.BrightnessLift, -0.15, 0.15);
+
+        float rS = (float)Math.Clamp(p.RedScale, 0.4, 1.2);
+        float gS = (float)Math.Clamp(p.GreenScale, 0.4, 1.2);
+        float bS = (float)Math.Clamp(p.BlueScale, 0.4, 1.2);
+
+        float inv = 1f - sat;
+        float sr = inv * 0.2126f;
+        float sg = inv * 0.7152f;
+        float sb = inv * 0.0722f;
+
+        float kR = c * b * rS;
+        float kG = c * b * gS;
+        float kB = c * b * bS;
+
+        float tBase = 0.5f * (1f - c) + lift;
+        float tR = tBase * b * rS;
+        float tG = tBase * b * gS;
+        float tB = tBase * b * bS;
+
+        return new MAGCOLOREFFECT
+        {
+            transform = new float[]
+            {
+                (sr + sat) * kR, sr * kG,         sr * kB,         0f, 0f,
+                sg * kR,         (sg + sat) * kG, sg * kB,         0f, 0f,
+                sb * kR,         sb * kG,         (sb + sat) * kB, 0f, 0f,
+                0f,              0f,              0f,              1f, 0f,
+                tR,              tG,              tB,              0f, 1f
+            }
+        };
+    }
+
+    private static void TryResetGdiGammaRamp(string device)
+    {
+        try
+        {
+            IntPtr hdc = CreateDCW(null, device, null, IntPtr.Zero);
+            if (hdc == IntPtr.Zero) return;
+            try
+            {
+                var ramp = new RAMP { Red = new ushort[256], Green = new ushort[256], Blue = new ushort[256] };
+                for (int i = 0; i < 256; i++)
+                {
+                    ushort val = (ushort)(i * 257);
+                    ramp.Red[i] = val;
+                    ramp.Green[i] = val;
+                    ramp.Blue[i] = val;
+                }
+                SetDeviceGammaRamp(hdc, ref ramp);
+            }
+            finally { DeleteDC(hdc); }
+        }
+        catch { }
+    }
+
+    private static (bool Ok, string Message) ApplyGdiGammaFallback(
+        MonitorDisplayInfo? monitor,
+        int brightnessPct,
+        int contrastPct,
+        ColorProfilePreset p)
     {
         try
         {
@@ -378,26 +545,15 @@ public sealed class DisplayAndColorService
 
             try
             {
-                var p = basePreset ?? GetColorPresets()[0];
-                double bScale = Math.Clamp(brightnessPct / 100.0, 0.20, 1.0);
-                // contrastPct: 50 -> 1.0 (neutral), 10 -> 0.65 (softer), 100 -> 1.38 (punchier)
+                double bScale = Math.Clamp(brightnessPct / 100.0, 0.25, 1.0);
                 double cFactor = 1.0 + ((Math.Clamp(contrastPct, 10, 100) - 50.0) / 50.0) * 0.35;
-                double invGamma = p.Gamma > 0.2 ? (1.0 / p.Gamma) : 1.0;
-
-                var ramp = new RAMP
-                {
-                    Red = new ushort[256],
-                    Green = new ushort[256],
-                    Blue = new ushort[256]
-                };
+                var ramp = new RAMP { Red = new ushort[256], Green = new ushort[256], Blue = new ushort[256] };
 
                 for (int i = 0; i < 256; i++)
                 {
                     double norm = i / 255.0;
-                    double v = i == 0 ? 0.0 : Math.Pow(norm, invGamma) + p.BrightnessLift * (1.0 - norm) * norm * 4.0;
-                    v = ((v - 0.5) * cFactor) + 0.5;
+                    double v = ((norm - 0.5) * cFactor * p.Contrast) + 0.5 + p.BrightnessLift;
                     v = Math.Clamp(v, 0.0, 1.0) * bScale;
-
                     ramp.Red[i] = (ushort)Math.Clamp(Math.Round(v * p.RedScale * 65535.0), 0, 65535);
                     ramp.Green[i] = (ushort)Math.Clamp(Math.Round(v * p.GreenScale * 65535.0), 0, 65535);
                     ramp.Blue[i] = (ushort)Math.Clamp(Math.Round(v * p.BlueScale * 65535.0), 0, 65535);
@@ -405,23 +561,34 @@ public sealed class DisplayAndColorService
 
                 bool ok = SetDeviceGammaRamp(hdc, ref ramp);
                 return ok
-                    ? (true, $"Yazılımsal Gama: Parlaklık %{brightnessPct}, Kontrast %{contrastPct} uygulandı.")
-                    : (false, "Gama rampası uygulanamadı (Windows HDR açıkken sistem gama kontrolünü kilitler).");
+                    ? (true, $"GDI Gama: {p.Name} | Parlaklık %{brightnessPct} | Kontrast %{contrastPct}")
+                    : (false, "Ekran renk motoru Windows tarafından engellendi.");
             }
-            finally
-            {
-                DeleteDC(hdc);
-            }
+            finally { DeleteDC(hdc); }
         }
         catch (Exception ex)
         {
-            return (false, $"Parlaklık/Kontrast hatası: {ex.Message}");
+            return (false, $"Renk/parlaklık hatası: {ex.Message}");
         }
     }
 
     public bool SetHardwareBrightness(MonitorDisplayInfo monitor, int percent)
     {
         percent = Math.Clamp(percent, 0, 100);
+        if (monitor.IsLaptopInternalPanel)
+        {
+            try
+            {
+                using var searcher = new ManagementObjectSearcher(@"root\WMI", "SELECT * FROM WmiMonitorBrightnessMethods");
+                foreach (ManagementObject m in searcher.Get())
+                {
+                    m.InvokeMethod("WmiSetBrightness", new object[] { 1u, (byte)percent });
+                    return true;
+                }
+            }
+            catch { }
+        }
+
         var map = MapHMonitorsByDeviceName();
         if (map.TryGetValue(monitor.DeviceName, out IntPtr hMon) &&
             GetNumberOfPhysicalMonitorsFromHMONITOR(hMon, out uint count) && count > 0)
@@ -441,18 +608,6 @@ public sealed class DisplayAndColorService
                 finally { DestroyPhysicalMonitors(count, arr); }
             }
         }
-
-        // Laptop WMI fallback
-        try
-        {
-            using var searcher = new ManagementObjectSearcher(@"root\WMI", "SELECT * FROM WmiMonitorBrightnessMethods");
-            foreach (ManagementObject m in searcher.Get())
-            {
-                m.InvokeMethod("WmiSetBrightness", new object[] { 1u, (byte)percent });
-                return true;
-            }
-        }
-        catch { }
         return false;
     }
 
@@ -482,10 +637,7 @@ public sealed class DisplayAndColorService
 
     public static void LaunchWindowsTool(string tool)
     {
-        try
-        {
-            Process.Start(new ProcessStartInfo(tool) { UseShellExecute = true });
-        }
+        try { Process.Start(new ProcessStartInfo(tool) { UseShellExecute = true }); }
         catch { }
     }
 

@@ -17,7 +17,7 @@ public partial class HardwareStudioView : System.Windows.Controls.UserControl
         InitializeComponent();
         Loaded += (_, _) => _loaded = true;
 
-        _brightnessDebounce = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(90) };
+        _brightnessDebounce = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(40) };
         _brightnessDebounce.Tick += (_, _) =>
         {
             _brightnessDebounce.Stop();
@@ -25,7 +25,7 @@ public partial class HardwareStudioView : System.Windows.Controls.UserControl
                 vm.ApplyMonitorBrightnessLive(vm.MonitorBrightnessValue);
         };
 
-        _contrastDebounce = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(90) };
+        _contrastDebounce = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(40) };
         _contrastDebounce.Tick += (_, _) =>
         {
             _contrastDebounce.Stop();

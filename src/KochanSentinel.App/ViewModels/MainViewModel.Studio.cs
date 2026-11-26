@@ -18,19 +18,28 @@ public partial class MainViewModel
     private readonly ServiceAndBloatAuditService _serviceAudit = new();
     private CancellationTokenSource? _driverCts;
     private ColorProfilePreset _activeColorPreset = DisplayAndColorService.GetColorPresets()[0];
+    private bool _suppressSliderLiveApply;
 
-    // --- Driver Audit & Windows Update Drivers ---
+    // --- Driver Audit & Live Windows Update Driver Installer ---
     [ObservableProperty] private bool _isScanningDrivers;
+    [ObservableProperty] private bool _isInstallingDrivers;
     [ObservableProperty] private string _driverAuditSummary = "Eksik/hatalı aygıtlar, eski sürücüler ve resmi Windows Update sürücü güncellemeleri taranmaya hazır.";
     [ObservableProperty] private int _pendingDriverUpdateCount;
+
+    [ObservableProperty] private string _driverInstallPhase = "HAZIRLANIYOR";
+    [ObservableProperty] private double _driverInstallPercent;
+    [ObservableProperty] private string _driverInstallCurrentItem = "";
+    [ObservableProperty] private string _driverInstallSpeedText = "—";
+    [ObservableProperty] private string _driverInstallDetailText = "";
     public ObservableCollection<DriverAuditItem> DriverAuditItems { get; } = new();
 
-    // --- Monitor & Color Calibration ---
+    // --- Monitor & Live DWM GPU / DDC Color Calibration ---
     [ObservableProperty] private MonitorDisplayInfo? _selectedMonitor;
     [ObservableProperty] private string _monitorSummaryText = "Bağlı monitörlerin Hz, çözünürlük, ICC profili ve renk önerileri taranıyor...";
     [ObservableProperty] private int _monitorBrightnessValue = 100;
     [ObservableProperty] private int _monitorContrastValue = 50;
-    [ObservableProperty] private string _brightnessControlModeText = "Ekran algılanıyor...";
+    [ObservableProperty] private bool _useHardwareDdcMode;
+    [ObservableProperty] private string _brightnessControlModeText = "⚡ DWM GPU Motoru Aktif — Her monitörde anında canlı parlaklık, kontrast & renk";
     [ObservableProperty] private string _activeColorPresetName = "Varsayılan (Standart 6500K)";
     public ObservableCollection<MonitorDisplayInfo> Monitors { get; } = new();
     public ObservableCollection<ColorProfilePreset> ColorPresets { get; } = new();
@@ -41,20 +50,41 @@ public partial class MainViewModel
     public ObservableCollection<ServiceOptimizationItem> UnusedServices { get; } = new();
     public ObservableCollection<BloatProcessAuditItem> BloatAndRiskyProcesses { get; } = new();
 
+    public bool IsDriverOperationBusy => IsScanningDrivers || IsInstallingDrivers;
+    public bool IsDwmSoftwareMode => !UseHardwareDdcMode;
+
+    partial void OnIsScanningDriversChanged(bool value) => OnPropertyChanged(nameof(IsDriverOperationBusy));
+    partial void OnIsInstallingDriversChanged(bool value) => OnPropertyChanged(nameof(IsDriverOperationBusy));
+    partial void OnUseHardwareDdcModeChanged(bool value) => OnPropertyChanged(nameof(IsDwmSoftwareMode));
+
     partial void OnSelectedMonitorChanged(MonitorDisplayInfo? value)
     {
         if (value == null) return;
-        if (value.SupportsDdcBrightness && value.CurrentBrightness >= 0)
+        _suppressSliderLiveApply = true;
+        try
         {
-            MonitorBrightnessValue = value.CurrentBrightness;
-            MonitorContrastValue = value.CurrentContrast >= 0 ? value.CurrentContrast : 50;
-            BrightnessControlModeText = "✓ DDC/CI Donanım Kontrolü Aktif (gerçek monitör parlaklığı)";
+            // Laptops with native WMI backlight default to Hardware; external desktop monitors default to instant DWM GPU
+            // because many desktop monitor firmwares/Windows 11 24H2 ignore DDC/CI or GDI gamma ramps.
+            if (value.IsLaptopInternalPanel && value.CurrentBrightness >= 0)
+            {
+                UseHardwareDdcMode = true;
+                MonitorBrightnessValue = Math.Clamp(value.CurrentBrightness, 25, 100);
+                MonitorContrastValue = 50;
+                BrightnessControlModeText = "✓ Laptop Dahili Arka Işık (Donanımsal WMI) Aktif";
+            }
+            else
+            {
+                UseHardwareDdcMode = false;
+                MonitorBrightnessValue = 100;
+                MonitorContrastValue = 50;
+                BrightnessControlModeText = value.SupportsDdcBrightness
+                    ? "⚡ DWM GPU Motoru Aktif (Anında Etki) • İstersen yukarıdan Donanım DDC/CI seçebilirsin"
+                    : "⚡ DWM GPU Motoru Aktif (Windows 11/10 tüm monitörlerde anında canlı etki)";
+            }
         }
-        else
+        finally
         {
-            MonitorBrightnessValue = 100;
-            MonitorContrastValue = 50;
-            BrightnessControlModeText = "⚡ Yazılımsal Gama Modu Aktif (Monitör OSD'sinde DDC/CI kapalıysa otomatik devreye girer)";
+            _suppressSliderLiveApply = false;
         }
     }
 
@@ -62,13 +92,20 @@ public partial class MainViewModel
     {
         foreach (var preset in DisplayAndColorService.GetColorPresets())
             ColorPresets.Add(preset);
+        _activeColorPreset = ColorPresets.FirstOrDefault() ?? _activeColorPreset;
+    }
+
+    public void CleanupHardwareStudioOnExit()
+    {
+        _driverCts?.Cancel();
+        _displayService.CleanupColorEngine();
     }
 
     // --- Monitor & Color Commands ---
     [RelayCommand]
     private async Task ScanMonitorsAsync()
     {
-        MonitorSummaryText = "Monitör Hz, çözünürlük, DDC/CI parlaklık ve ICC renk profili okunuyor...";
+        MonitorSummaryText = "Monitör Hz, çözünürlük, parlaklık motoru ve ICC renk profili okunuyor...";
         try
         {
             string gpu = Metrics.GpuName;
@@ -101,76 +138,151 @@ public partial class MainViewModel
     }
 
     [RelayCommand]
+    private void SetBrightnessControlMode(string? mode)
+    {
+        bool wantHardware = string.Equals(mode, "ddc", StringComparison.OrdinalIgnoreCase);
+        if (wantHardware && SelectedMonitor != null && !SelectedMonitor.SupportsDdcBrightness)
+        {
+            UseHardwareDdcMode = false;
+            BrightnessControlModeText = "⚠ Bu monitörde DDC/CI kapalı — DWM GPU Motoru ile devam ediliyor (anında etki)";
+            ShowToast("DDC/CI Bulunamadı", "Monitör OSD menüsünde DDC/CI kapalı görünüyor. DWM GPU motoru zaten anında çalışır.", FindingSeverity.Medium);
+            return;
+        }
+
+        UseHardwareDdcMode = wantHardware;
+        if (wantHardware)
+        {
+            // Keep color preset active via DWM, reset DWM brightness/contrast to neutral so hardware takes over
+            _displayService.ApplyLiveDwmColorAndBrightness(SelectedMonitor, 100, 50, _activeColorPreset);
+            if (SelectedMonitor != null && SelectedMonitor.CurrentBrightness >= 0)
+            {
+                _suppressSliderLiveApply = true;
+                MonitorBrightnessValue = Math.Clamp(SelectedMonitor.CurrentBrightness, 25, 100);
+                if (SelectedMonitor.CurrentContrast >= 0)
+                    MonitorContrastValue = Math.Clamp(SelectedMonitor.CurrentContrast, 10, 100);
+                _suppressSliderLiveApply = false;
+            }
+            BrightnessControlModeText = "✓ Donanım DDC/CI Modu — Monitörün fiziksel arka ışığını kontrol eder";
+        }
+        else
+        {
+            BrightnessControlModeText = "⚡ DWM GPU Motoru Aktif — Her monitörde anında canlı parlaklık & kontrast";
+            ApplyCurrentDwmOnUiThread();
+        }
+    }
+
+    [RelayCommand]
     private void ApplyColorPreset(ColorProfilePreset? preset)
     {
         if (preset == null) return;
         _activeColorPreset = preset;
-        if (preset.Id == "default" && (SelectedMonitor == null || !SelectedMonitor.SupportsDdcBrightness))
+        foreach (var p in ColorPresets)
+            p.IsActive = string.Equals(p.Id, preset.Id, StringComparison.OrdinalIgnoreCase);
+
+        if (preset.Id == "default" && !UseHardwareDdcMode)
         {
+            _suppressSliderLiveApply = true;
             MonitorBrightnessValue = 100;
             MonitorContrastValue = 50;
+            _suppressSliderLiveApply = false;
         }
 
-        var (ok, msg) = _displayService.ApplyColorPreset(SelectedMonitor, preset);
-        if (ok) ActiveColorPresetName = preset.Name;
+        int dwmBright = UseHardwareDdcMode ? 100 : MonitorBrightnessValue;
+        int dwmContrast = UseHardwareDdcMode ? 50 : MonitorContrastValue;
+
+        var (ok, engine, msg) = _displayService.ApplyLiveDwmColorAndBrightness(SelectedMonitor, dwmBright, dwmContrast, preset);
+        if (ok)
+        {
+            ActiveColorPresetName = preset.Name;
+            BrightnessControlModeText = UseHardwareDdcMode
+                ? $"✓ Donanım DDC/CI + {engine} Renk: {preset.BadgeText}"
+                : $"⚡ {engine} Aktif • Profil: {preset.BadgeText} | Parlaklık %{dwmBright} | Kontrast %{dwmContrast}";
+        }
         StatusBanner = msg;
-        ShowToast(ok ? "Renk Profili Uygulandı" : "Renk Ayarı Uyarısı", msg, ok ? FindingSeverity.Info : FindingSeverity.Medium);
+        ShowToast(ok ? $"Renk Profili: {preset.BadgeText}" : "Renk Ayarı Uyarısı", msg, ok ? FindingSeverity.Info : FindingSeverity.Medium);
+    }
+
+    [RelayCommand]
+    private void ResetDisplayAndColor()
+    {
+        var def = ColorPresets.FirstOrDefault(p => p.Id == "default") ?? DisplayAndColorService.GetColorPresets()[0];
+        _suppressSliderLiveApply = true;
+        MonitorBrightnessValue = 100;
+        MonitorContrastValue = 50;
+        _suppressSliderLiveApply = false;
+
+        ApplyColorPreset(def);
     }
 
     public void ApplyMonitorBrightnessLive(int percent)
     {
+        if (_suppressSliderLiveApply) return;
+
+        if (!UseHardwareDdcMode)
+        {
+            ApplyCurrentDwmOnUiThread();
+            return;
+        }
+
         var mon = SelectedMonitor;
         _ = Task.Run(() =>
         {
             bool hwOk = mon != null && mon.SupportsDdcBrightness && _displayService.SetHardwareBrightness(mon, percent);
-            if (!hwOk)
+            System.Windows.Application.Current?.Dispatcher.Invoke(() =>
             {
-                var (swOk, swMsg) = _displayService.ApplySoftwareBrightnessContrast(mon, percent, MonitorContrastValue, _activeColorPreset);
-                System.Windows.Application.Current?.Dispatcher.Invoke(() =>
-                {
-                    BrightnessControlModeText = swOk
-                        ? $"⚡ Yazılımsal Gama Modu (Parlaklık %{percent} / Kontrast %{MonitorContrastValue})"
-                        : swMsg;
-                    StatusBanner = swMsg;
-                });
-            }
-            else
-            {
-                System.Windows.Application.Current?.Dispatcher.Invoke(() =>
+                if (hwOk)
                 {
                     BrightnessControlModeText = $"✓ DDC/CI Donanım Parlaklığı: %{percent}";
                     StatusBanner = $"Monitör donanımsal parlaklığı %{percent} yapıldı.";
-                });
-            }
+                }
+                else
+                {
+                    // Auto-fallback to instant DWM GPU mode if hardware DDC/CI rejected the write
+                    UseHardwareDdcMode = false;
+                    ApplyCurrentDwmOnUiThread();
+                }
+            });
         });
     }
 
     public void ApplyMonitorContrastLive(int percent)
     {
+        if (_suppressSliderLiveApply) return;
+
+        if (!UseHardwareDdcMode)
+        {
+            ApplyCurrentDwmOnUiThread();
+            return;
+        }
+
         var mon = SelectedMonitor;
         _ = Task.Run(() =>
         {
             bool hwOk = mon != null && mon.SupportsDdcBrightness && mon.CurrentContrast >= 0 && _displayService.SetHardwareContrast(mon, percent);
-            if (!hwOk)
+            System.Windows.Application.Current?.Dispatcher.Invoke(() =>
             {
-                var (swOk, swMsg) = _displayService.ApplySoftwareBrightnessContrast(mon, MonitorBrightnessValue, percent, _activeColorPreset);
-                System.Windows.Application.Current?.Dispatcher.Invoke(() =>
-                {
-                    BrightnessControlModeText = swOk
-                        ? $"⚡ Yazılımsal Gama Modu (Parlaklık %{MonitorBrightnessValue} / Kontrast %{percent})"
-                        : swMsg;
-                    StatusBanner = swMsg;
-                });
-            }
-            else
-            {
-                System.Windows.Application.Current?.Dispatcher.Invoke(() =>
+                if (hwOk)
                 {
                     BrightnessControlModeText = $"✓ DDC/CI Donanım Kontrastı: %{percent}";
                     StatusBanner = $"Monitör donanımsal kontrastı %{percent} yapıldı.";
-                });
-            }
+                }
+                else
+                {
+                    UseHardwareDdcMode = false;
+                    ApplyCurrentDwmOnUiThread();
+                }
+            });
         });
+    }
+
+    private void ApplyCurrentDwmOnUiThread()
+    {
+        var (ok, engine, msg) = _displayService.ApplyLiveDwmColorAndBrightness(
+            SelectedMonitor, MonitorBrightnessValue, MonitorContrastValue, _activeColorPreset);
+        BrightnessControlModeText = ok
+            ? $"⚡ {engine} Aktif • Parlaklık %{MonitorBrightnessValue} | Kontrast %{MonitorContrastValue} | {_activeColorPreset.BadgeText}"
+            : msg;
+        StatusBanner = msg;
     }
 
     [RelayCommand]
@@ -180,15 +292,15 @@ public partial class MainViewModel
             DisplayAndColorService.LaunchWindowsTool(tool);
     }
 
-    // --- Driver Audit & Update Commands ---
+    // --- Driver Audit & Live Progress Installer Commands ---
     [RelayCommand]
     private async Task ScanHardwareDriversAsync()
     {
-        if (IsScanningDrivers) return;
+        if (IsScanningDrivers || IsInstallingDrivers) return;
         IsScanningDrivers = true;
         _driverCts?.Cancel();
         _driverCts = new CancellationTokenSource();
-        DriverAuditSummary = "Aygıt Yöneticisi hataları, kurulu sürücü tarihleri ve Windows Update WHQL sürücüleri taranıyor...";
+        DriverAuditSummary = "Aygıt Yöneticisi hataları, PCI donanım kimlikleri ve Windows Update WHQL sürücüleri taranıyor...";
 
         try
         {
@@ -215,33 +327,80 @@ public partial class MainViewModel
     }
 
     [RelayCommand]
-    private async Task InstallPendingDriverUpdatesAsync()
+    private Task InstallPendingDriverUpdatesAsync() => RunDriverInstallCoreAsync(null);
+
+    [RelayCommand]
+    private async Task HandleDriverItemActionAsync(DriverAuditItem? item)
     {
-        if (IsScanningDrivers) return;
-        IsScanningDrivers = true;
+        if (item == null) return;
+        if (item.IsPendingWindowsUpdate && !string.IsNullOrWhiteSpace(item.UpdateId))
+        {
+            await RunDriverInstallCoreAsync(item.UpdateId);
+            return;
+        }
+
+        DriverUpdateService.OpenDriverCatalogLookup(item);
+        StatusBanner = $"Microsoft Update Catalog açıldı: {(string.IsNullOrWhiteSpace(item.HardwareId) ? item.DeviceName : item.HardwareId)}";
+    }
+
+    [RelayCommand]
+    private void CancelDriverOperation()
+    {
+        _driverCts?.Cancel();
+        DriverInstallPhase = "İPTAL EDİLİYOR";
+        DriverInstallDetailText = "Windows Update işlemi güvenli şekilde durduruluyor...";
+    }
+
+    private async Task RunDriverInstallCoreAsync(string? singleUpdateId)
+    {
+        if (IsScanningDrivers || IsInstallingDrivers) return;
+        IsInstallingDrivers = true;
         _driverCts?.Cancel();
         _driverCts = new CancellationTokenSource();
 
+        DriverInstallPhase = "HAZIRLANIYOR";
+        DriverInstallPercent = 2;
+        DriverInstallCurrentItem = "Geri yükleme noktası kontrol ediliyor ve Windows Update başlatılıyor...";
+        DriverInstallSpeedText = "—";
+        DriverInstallDetailText = "Başlatılıyor...";
+
+        bool shouldRescan = false;
         try
         {
             await EnsureAutoRestorePointAsync("Sürücü Güncellemesi Öncesi");
-            var progress = new Progress<string>(msg =>
+
+            var progress = new Progress<DriverInstallProgress>(p =>
             {
-                DriverAuditSummary = msg;
-                StatusBanner = msg;
+                DriverInstallPhase = p.Phase.ToUpperInvariant();
+                DriverInstallPercent = p.Percent;
+                DriverInstallCurrentItem = p.TotalCount > 0
+                    ? $"({p.CurrentIndex}/{p.TotalCount})  {p.CurrentDriverName}"
+                    : p.CurrentDriverName;
+                DriverInstallSpeedText = p.SpeedMbps >= 1.0
+                    ? $"{p.SpeedMbps:F1} MB/s"
+                    : p.SpeedMbps >= 0.02
+                        ? $"{p.SpeedMbps * 1024.0:F0} KB/s"
+                        : p.Phase == "Kuruluyor" ? "Kuruluyor..." : "Bekleniyor...";
+                DriverInstallDetailText = $"{p.DetailText}  •  Geçen süre: {p.ElapsedText}";
+                DriverAuditSummary = $"{p.Phase}: {DriverInstallCurrentItem}";
+                StatusBanner = $"{p.Phase} (%{p.Percent:F0}) — {p.CurrentDriverName}";
             });
 
-            var (ok, msg) = await _driverService.InstallPendingDriverUpdatesAsync(progress, _driverCts.Token);
+            var (ok, installed, failed, _, msg) = await _driverService.InstallDriverUpdatesAsync(singleUpdateId, progress, _driverCts.Token);
             DriverAuditSummary = msg;
             StatusBanner = msg;
-            ShowToast("Sürücü Güncelleme", msg, ok ? FindingSeverity.Info : FindingSeverity.High);
-            if (ok)
-                await ScanHardwareDriversAsync();
+            ShowToast(ok ? "Sürücü Kurulumu Tamamlandı" : "Sürücü Kurulum Uyarısı", msg,
+                (ok && failed == 0) ? FindingSeverity.Info : FindingSeverity.High);
+            shouldRescan = installed > 0 || ok;
         }
         finally
         {
-            IsScanningDrivers = false;
+            // Release install lock BEFORE triggering re-scan so ScanHardwareDriversAsync actually runs!
+            IsInstallingDrivers = false;
         }
+
+        if (shouldRescan)
+            await ScanHardwareDriversAsync();
     }
 
     [RelayCommand]
