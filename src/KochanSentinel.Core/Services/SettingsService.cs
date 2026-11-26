@@ -4,6 +4,7 @@ using System.IO;
 using System.Security;
 using System.Text;
 using System.Text.Json;
+using KochanSentinel.Core.Interop;
 using KochanSentinel.Core.Models;
 using Microsoft.Win32;
 
@@ -11,6 +12,7 @@ namespace KochanSentinel.Core.Services;
 
 public sealed class SettingsService
 {
+    private const string DpapiPrefix = "dpapi:";
     private static readonly string ConfigDir = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
         "KochanSentinel");
@@ -23,12 +25,22 @@ public sealed class SettingsService
     public AppSettings Load()
     {
         AppSettings? settings = null;
+        bool migratedPlaintextSecret = false;
         try
         {
             if (File.Exists(ConfigPath))
             {
                 var json = File.ReadAllText(ConfigPath);
                 settings = JsonSerializer.Deserialize<AppSettings>(json);
+                if (settings != null)
+                {
+                    migratedPlaintextSecret |= UnprotectSecretField(settings.VirusTotalApiKey, out var vt);
+                    settings.VirusTotalApiKey = vt;
+                    migratedPlaintextSecret |= UnprotectSecretField(settings.MalwareBazaarAuthKey, out var mb);
+                    settings.MalwareBazaarAuthKey = mb;
+                    migratedPlaintextSecret |= UnprotectSecretField(settings.DiscordWebhookUrl, out var wh);
+                    settings.DiscordWebhookUrl = wh;
+                }
             }
         }
         catch { }
@@ -54,6 +66,9 @@ public sealed class SettingsService
             return settings;
         }
 
+        if (migratedPlaintextSecret)
+            Save(settings);
+
         // Keep Task Scheduler path synced if StartWithWindows is enabled
         if (settings.StartWithWindows)
             ApplyWindowsStartup(true);
@@ -67,7 +82,15 @@ public sealed class SettingsService
         {
             settings.StartupDefaultMigrated = true;
             Directory.CreateDirectory(ConfigDir);
-            var json = JsonSerializer.Serialize(settings, new JsonSerializerOptions { WriteIndented = true });
+
+            // Serialize a shallow copy with DPAPI-encrypted secret tokens
+            var rawJson = JsonSerializer.Serialize(settings);
+            var diskCopy = JsonSerializer.Deserialize<AppSettings>(rawJson) ?? settings;
+            diskCopy.VirusTotalApiKey = ProtectSecretField(settings.VirusTotalApiKey);
+            diskCopy.MalwareBazaarAuthKey = ProtectSecretField(settings.MalwareBazaarAuthKey);
+            diskCopy.DiscordWebhookUrl = ProtectSecretField(settings.DiscordWebhookUrl);
+
+            var json = JsonSerializer.Serialize(diskCopy, new JsonSerializerOptions { WriteIndented = true });
             File.WriteAllText(ConfigPath, json);
             return ApplyWindowsStartup(settings.StartWithWindows);
         }
@@ -75,6 +98,57 @@ public sealed class SettingsService
         {
             return false;
         }
+    }
+
+    public static AppSettings CreateRedactedExportCopy(AppSettings settings)
+    {
+        var rawJson = JsonSerializer.Serialize(settings);
+        var copy = JsonSerializer.Deserialize<AppSettings>(rawJson) ?? new AppSettings();
+        copy.VirusTotalApiKey = "";
+        copy.MalwareBazaarAuthKey = "";
+        copy.DiscordWebhookUrl = "";
+        return copy;
+    }
+
+    private static string ProtectSecretField(string? plain)
+    {
+        if (string.IsNullOrWhiteSpace(plain)) return "";
+        if (plain.StartsWith(DpapiPrefix, StringComparison.Ordinal)) return plain;
+        try
+        {
+            var encrypted = NativeMethods.ProtectDpapi(Encoding.UTF8.GetBytes(plain.Trim()));
+            return DpapiPrefix + Convert.ToBase64String(encrypted);
+        }
+        catch
+        {
+            return plain;
+        }
+    }
+
+    private static bool UnprotectSecretField(string? stored, out string plain)
+    {
+        if (string.IsNullOrWhiteSpace(stored))
+        {
+            plain = "";
+            return false;
+        }
+        if (stored.StartsWith(DpapiPrefix, StringComparison.Ordinal))
+        {
+            try
+            {
+                var bytes = Convert.FromBase64String(stored[DpapiPrefix.Length..]);
+                plain = Encoding.UTF8.GetString(NativeMethods.UnprotectDpapi(bytes));
+                return false;
+            }
+            catch
+            {
+                plain = "";
+                return false;
+            }
+        }
+        // Plaintext legacy key -> signal migration to DPAPI
+        plain = stored.Trim();
+        return true;
     }
 
     private static bool ApplyWindowsStartup(bool enable)

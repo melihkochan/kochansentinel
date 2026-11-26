@@ -44,6 +44,8 @@ public sealed class SystemMetrics
     public List<SmartDriveHealth> SmartDrives { get; set; } = new();
     public int HealthScore { get; set; } = 100;
     public string HealthStatusText { get; set; } = "Mükemmel";
+    public string SensorDriverStatus { get; set; } = "Aktif";
+    public double? LastBootSeconds { get; set; }
 }
 
 public sealed class DriveMetric
@@ -65,6 +67,13 @@ public sealed class ProcessItem
     public double CpuPercent { get; set; }
     public double RamMb { get; set; }
     public double DiskKbPerSec { get; set; }
+    public double NetDownloadKbPerSec { get; set; }
+    public double NetUploadKbPerSec { get; set; }
+    public string NetSpeedText => (NetDownloadKbPerSec + NetUploadKbPerSec) < 0.1
+        ? "0 KB/s"
+        : (NetDownloadKbPerSec + NetUploadKbPerSec) >= 1024
+            ? $"↓{NetDownloadKbPerSec / 1024.0:F1} ↑{NetUploadKbPerSec / 1024.0:F1} MB/s"
+            : $"↓{NetDownloadKbPerSec:F0} ↑{NetUploadKbPerSec:F0} KB/s";
     public int ActiveConnections { get; set; }
     public string RemoteEndpoints { get; set; } = "";
     public string Priority { get; set; } = "Normal";

@@ -33,6 +33,11 @@ public sealed class RansomwareCanaryService : IDisposable
     private DateTime _lastAlertUtc = DateTime.MinValue;
 
     public bool IsActive { get; private set; }
+    /// <summary>
+    /// When false (default), suspicious high-write unsigned processes are SUSPENDED instead of killed
+    /// to prevent data loss from false positives (user can inspect/resume/kill in Process Monitor).
+    /// </summary>
+    public bool AutoKillMode { get; set; } = false;
     public event Action<SecurityEvent>? OnRansomwareAlert;
 
     public void Start()
@@ -105,10 +110,11 @@ public sealed class RansomwareCanaryService : IDisposable
         if ((DateTime.UtcNow - _lastAlertUtc).TotalSeconds < 4) return;
         _lastAlertUtc = DateTime.UtcNow;
 
-        _ = Task.Run(() =>
+        _ = Task.Run(async () =>
         {
             var neutralized = new List<string>();
-            // Identify suspicious unsigned processes performing heavy I/O right now
+            // Measure real-time write I/O delta over 220ms instead of lifetime totals to avoid false positives!
+            var sample1 = new Dictionary<int, (string Name, string Path, ulong WriteBytes)>();
             foreach (var proc in Process.GetProcesses())
             {
                 try
@@ -118,7 +124,8 @@ public sealed class RansomwareCanaryService : IDisposable
                     if (pName.Equals("explorer", StringComparison.OrdinalIgnoreCase) ||
                         pName.Equals("MsMpEng", StringComparison.OrdinalIgnoreCase) ||
                         pName.Equals("SearchIndexer", StringComparison.OrdinalIgnoreCase) ||
-                        pName.Equals("OneDrive", StringComparison.OrdinalIgnoreCase))
+                        pName.Equals("OneDrive", StringComparison.OrdinalIgnoreCase) ||
+                        pName.Equals("KochanSentinel", StringComparison.OrdinalIgnoreCase))
                         continue;
 
                     string path = "";
@@ -126,16 +133,40 @@ public sealed class RansomwareCanaryService : IDisposable
                     if (string.IsNullOrEmpty(path) || path.StartsWith(@"C:\Windows\", StringComparison.OrdinalIgnoreCase))
                         continue;
 
-                    bool signed = NativeMethods.VerifyFileOrCatalogSignature(path);
-                    if (!signed && NativeMethods.GetProcessIoCounters(proc.Handle, out var io) &&
-                        io.WriteTransferCount > 2 * 1024 * 1024)
-                    {
-                        proc.Kill(entireProcessTree: true);
-                        neutralized.Add($"{pName} (PID {proc.Id})");
-                    }
+                    if (NativeMethods.GetProcessIoCounters(proc.Handle, out var io))
+                        sample1[proc.Id] = (pName, path, io.WriteTransferCount);
                 }
                 catch { }
                 finally { proc.Dispose(); }
+            }
+
+            await Task.Delay(220);
+
+            foreach (var kv in sample1)
+            {
+                try
+                {
+                    using var proc = Process.GetProcessById(kv.Key);
+                    if (!NativeMethods.GetProcessIoCounters(proc.Handle, out var io2)) continue;
+                    ulong deltaWrite = io2.WriteTransferCount >= kv.Value.WriteBytes
+                        ? io2.WriteTransferCount - kv.Value.WriteBytes
+                        : 0;
+
+                    // Active burst write (> 256 KB in 220ms ~= > 1.1 MB/s) by unsigned non-Windows binary
+                    if (deltaWrite > 256 * 1024 && !NativeMethods.VerifyFileOrCatalogSignature(kv.Value.Path))
+                    {
+                        if (AutoKillMode)
+                        {
+                            proc.Kill(entireProcessTree: true);
+                            neutralized.Add($"{kv.Value.Name} (PID {kv.Key} — Sonlandırıldı)");
+                        }
+                        else if (NativeMethods.NtSuspendProcess(proc.Handle) == 0)
+                        {
+                            neutralized.Add($"{kv.Value.Name} (PID {kv.Key} — Donduruldu)");
+                        }
+                    }
+                }
+                catch { }
             }
 
             // Restore intact decoy files cleanly
@@ -151,14 +182,14 @@ public sealed class RansomwareCanaryService : IDisposable
             }
 
             string extra = neutralized.Count > 0
-                ? $" Süreç durduruldu: {string.Join(", ", neutralized)}."
-                : " Lütfen belgelerinize yazan şüpheli uygulamayı kontrol edin.";
+                ? $" Müdahale edilen süreç: {string.Join(", ", neutralized)}."
+                : " Aktif şifreleme hızı gösteren imzasız süreç tespit edilmedi (yanlış dokunma olabilir).";
 
             OnRansomwareAlert?.Invoke(new SecurityEvent
             {
                 Source = "RANSOMWARE HONEYPOT",
                 Message = $"Tuzak dosya kurcalandı ({e.ChangeType}: {name})!{extra}",
-                Severity = FindingSeverity.Critical
+                Severity = neutralized.Count > 0 ? FindingSeverity.Critical : FindingSeverity.High
             });
         });
     }

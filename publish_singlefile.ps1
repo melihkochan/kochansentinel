@@ -17,5 +17,9 @@ Write-Host "Publishing KOCHAN Sentinel Single-File EXE (SelfContained=$scArg) ->
     -p:EnableCompressionInSingleFile=true `
     -o $outDir
 
-Write-Host "`nTamamlandi! Tekil dosya:" -ForegroundColor Green
-Get-Item "$outDir\KochanSentinel.exe" | Select-Object FullName, Length, LastWriteTime
+Write-Host "`nTamamlandi! Tekil dosya & SHA-256:" -ForegroundColor Green
+$exePath = "$outDir\KochanSentinel.exe"
+$hash = (Get-FileHash -Path $exePath -Algorithm SHA256).Hash.ToLowerInvariant()
+"$hash  KochanSentinel.exe" | Set-Content -Path "$outDir\SHA256SUMS.txt" -Encoding ASCII
+Get-Item $exePath | Select-Object FullName, Length, LastWriteTime
+Write-Host "SHA256: $hash" -ForegroundColor Cyan

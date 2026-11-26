@@ -31,6 +31,14 @@ public sealed class BenchmarkResult
     public int DiskRandom4kReadIops { get; set; }
     public int DiskRandom4kWriteIops { get; set; }
 
+    // GPU & Thermal Throttling Telemetry
+    public int GpuScore { get; set; }
+    public double GpuThroughputMops { get; set; }
+    public double? PeakCpuTempC { get; set; }
+    public double? PeakGpuTempC { get; set; }
+    public bool ThermalThrottlingDetected { get; set; }
+    public string ThermalSummary { get; set; } = "Sensör verisi yok";
+
     // Composite UserBenchmark-style profiles (100% = Modern Balanced Desktop Reference)
     public int OverallScore { get; set; }
     public int GamingPercent { get; set; }

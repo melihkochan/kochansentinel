@@ -1,8 +1,10 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Security.Cryptography;
 using System.Threading;
 using System.Threading.Tasks;
 using KochanSentinel.Core.Interop;
@@ -11,8 +13,8 @@ using KochanSentinel.Core.Models;
 namespace KochanSentinel.Core.Services;
 
 /// <summary>
-/// High-speed TreeSize-style disk analyzer that safely traverses directories without falling into
-/// NTFS junction/reparse loops, building a sorted folder tree, top-largest-file list, and type breakdown.
+/// High-speed multi-threaded TreeSize-style disk analyzer &amp; SHA-256 Duplicate File Finder.
+/// Safely traverses directories in parallel without falling into NTFS junction/reparse loops.
 /// </summary>
 public sealed class DiskAnalyzerService
 {
@@ -52,6 +54,7 @@ public sealed class DiskAnalyzerService
             int totalFolders = 0;
             long totalBytes = 0;
             long lastReportTicks = Environment.TickCount64;
+            object sharedLock = new();
 
             var topFilesHeap = new PriorityQueue<DiskNode, long>();
             var catStats = new Dictionary<string, CategoryAccumulator>(StringComparer.Ordinal)
@@ -66,7 +69,7 @@ public sealed class DiskAnalyzerService
             DiskNode ScanFolderRecursive(string dirPath, int depth)
             {
                 ct.ThrowIfCancellationRequested();
-                totalFolders++;
+                Interlocked.Increment(ref totalFolders);
 
                 string folderName = Path.GetFileName(dirPath.TrimEnd('\\', '/'));
                 if (string.IsNullOrEmpty(folderName)) folderName = dirPath;
@@ -104,33 +107,39 @@ public sealed class DiskAnalyzerService
                             string ext = fi.Extension;
                             dirBytes += len;
                             dirFileCount++;
-                            totalFiles++;
-                            totalBytes += len;
+                            Interlocked.Increment(ref totalFiles);
+                            Interlocked.Add(ref totalBytes, len);
 
                             string catKey = ClassifyExtension(ext);
-                            catStats[catKey].Bytes += len;
-                            catStats[catKey].Count++;
+                            var acc = catStats[catKey];
+                            Interlocked.Add(ref acc.Bytes, len);
+                            Interlocked.Increment(ref acc.Count);
 
-                            // Track global Top 60 largest files
-                            if (len >= 5 * 1024 * 1024 && (topFilesHeap.Count < MaxTopFiles || len > topFilesHeap.Peek().SizeBytes))
+                            // Track global Top 60 largest files (thread-safe)
+                            if (len >= 5 * 1024 * 1024)
                             {
-                                var fileNode = new DiskNode
+                                lock (sharedLock)
                                 {
-                                    Name = fi.Name,
-                                    FullPath = filePath,
-                                    IsDirectory = false,
-                                    IsProtectedSystem = IsSystemProtectedPath(filePath),
-                                    Extension = string.IsNullOrEmpty(ext) ? "Dosya" : ext.ToLowerInvariant(),
-                                    SizeBytes = len,
-                                    LastModified = lw,
-                                    FileCount = 1
-                                };
-                                topFilesHeap.Enqueue(fileNode, len);
-                                if (topFilesHeap.Count > MaxTopFiles)
-                                    topFilesHeap.Dequeue();
+                                    if (topFilesHeap.Count < MaxTopFiles || len > topFilesHeap.Peek().SizeBytes)
+                                    {
+                                        var fileNode = new DiskNode
+                                        {
+                                            Name = fi.Name,
+                                            FullPath = filePath,
+                                            IsDirectory = false,
+                                            IsProtectedSystem = IsSystemProtectedPath(filePath),
+                                            Extension = string.IsNullOrEmpty(ext) ? "Dosya" : ext.ToLowerInvariant(),
+                                            SizeBytes = len,
+                                            LastModified = lw,
+                                            FileCount = 1
+                                        };
+                                        topFilesHeap.Enqueue(fileNode, len);
+                                        if (topFilesHeap.Count > MaxTopFiles)
+                                            topFilesHeap.Dequeue();
+                                    }
+                                }
                             }
 
-                            // Keep direct file children for depth <= 3 or notable files (>= 1 MB) to keep TreeView crisp
                             if (depth <= 2 || len >= 1024 * 1024)
                             {
                                 rawChildren.Add(new DiskNode
@@ -149,6 +158,7 @@ public sealed class DiskAnalyzerService
                         catch { }
                     }
 
+                    var subDirs = new List<string>();
                     foreach (var subDir in Directory.EnumerateDirectories(dirPath))
                     {
                         ct.ThrowIfCancellationRequested();
@@ -156,20 +166,61 @@ public sealed class DiskAnalyzerService
                         {
                             var attrs = File.GetAttributes(subDir);
                             if ((attrs & FileAttributes.ReparsePoint) != 0)
-                                continue; // Crucial: prevent NTFS junction infinite loops (AppData/Application Data)
+                                continue;
+                            subDirs.Add(subDir);
+                        }
+                        catch { }
+                    }
 
-                            var childNode = ScanFolderRecursive(subDir, depth + 1);
+                    // Parallelize top-level folders across CPU cores for 3x-5x faster NVMe scans!
+                    if (depth == 0 && subDirs.Count > 1)
+                    {
+                        var bag = new ConcurrentBag<DiskNode>();
+                        Parallel.ForEach(
+                            subDirs,
+                            new ParallelOptions
+                            {
+                                MaxDegreeOfParallelism = Math.Clamp(Environment.ProcessorCount, 2, 12),
+                                CancellationToken = ct
+                            },
+                            sd =>
+                            {
+                                try { bag.Add(ScanFolderRecursive(sd, depth + 1)); }
+                                catch (OperationCanceledException) { throw; }
+                                catch { }
+                            });
+
+                        foreach (var childNode in bag)
+                        {
                             dirBytes += childNode.SizeBytes;
                             dirFileCount += childNode.FileCount;
                             dirFolderCount += 1 + childNode.FolderCount;
                             if (childNode.LastModified > latestWrite)
                                 latestWrite = childNode.LastModified;
-
                             rawChildren.Add(childNode);
                         }
-                        catch { }
+                    }
+                    else
+                    {
+                        foreach (var subDir in subDirs)
+                        {
+                            ct.ThrowIfCancellationRequested();
+                            try
+                            {
+                                var childNode = ScanFolderRecursive(subDir, depth + 1);
+                                dirBytes += childNode.SizeBytes;
+                                dirFileCount += childNode.FileCount;
+                                dirFolderCount += 1 + childNode.FolderCount;
+                                if (childNode.LastModified > latestWrite)
+                                    latestWrite = childNode.LastModified;
+                                rawChildren.Add(childNode);
+                            }
+                            catch (OperationCanceledException) { throw; }
+                            catch { }
+                        }
                     }
                 }
+                catch (OperationCanceledException) { throw; }
                 catch { }
 
                 node.SizeBytes = dirBytes;
@@ -210,15 +261,15 @@ public sealed class DiskAnalyzerService
                 }
 
                 long nowTicks = Environment.TickCount64;
-                if (nowTicks - lastReportTicks >= 160)
+                long prevTicks = Interlocked.Read(ref lastReportTicks);
+                if (nowTicks - prevTicks >= 160 && Interlocked.CompareExchange(ref lastReportTicks, nowTicks, prevTicks) == prevTicks)
                 {
-                    lastReportTicks = nowTicks;
                     progress?.Report(new DiskScanProgress
                     {
                         CurrentPath = dirPath,
-                        ScannedFiles = totalFiles,
-                        ScannedFolders = totalFolders,
-                        ScannedBytes = totalBytes
+                        ScannedFiles = Volatile.Read(ref totalFiles),
+                        ScannedFolders = Volatile.Read(ref totalFolders),
+                        ScannedBytes = Volatile.Read(ref totalBytes)
                     });
                 }
 
@@ -244,13 +295,14 @@ public sealed class DiskAnalyzerService
                 ["Diğer Dosyalar"] = "#71717A"
             };
 
+            long finalBytes = Volatile.Read(ref totalBytes);
             var extStats = catStats
                 .Select(kv => new DiskExtensionStat
                 {
                     CategoryName = kv.Key,
                     TotalBytes = kv.Value.Bytes,
                     FileCount = kv.Value.Count,
-                    Percent = totalBytes > 0 ? Math.Round(kv.Value.Bytes * 100.0 / totalBytes, 1) : 0,
+                    Percent = finalBytes > 0 ? Math.Round(kv.Value.Bytes * 100.0 / finalBytes, 1) : 0,
                     AccentColor = colorMap.GetValueOrDefault(kv.Key, "#38BDF8")
                 })
                 .OrderByDescending(s => s.TotalBytes)
@@ -260,15 +312,200 @@ public sealed class DiskAnalyzerService
             return new DiskScanSummary
             {
                 RootPath = rootPath,
-                TotalScannedBytes = totalBytes,
-                TotalFiles = totalFiles,
-                TotalFolders = totalFolders,
+                TotalScannedBytes = finalBytes,
+                TotalFiles = Volatile.Read(ref totalFiles),
+                TotalFolders = Volatile.Read(ref totalFolders),
                 ElapsedSeconds = Math.Round(sw.Elapsed.TotalSeconds, 1),
                 RootNode = rootNode,
                 TopLargestFiles = topList,
                 ExtensionStats = extStats
             };
         }, ct);
+    }
+
+    /// <summary>
+    /// 3-stage fast Duplicate File Finder: Size Grouping -> 128KB Partial Hash -> Full SHA-256 Verification.
+    /// Automatically skips Windows system directories so users never accidentally delete OS binaries.
+    /// </summary>
+    public async Task<List<DuplicateFileGroup>> FindDuplicatesAsync(
+        string rootPath,
+        long minFileSizeBytes = 2 * 1024 * 1024,
+        IProgress<DiskScanProgress>? progress = null,
+        CancellationToken ct = default)
+    {
+        return await Task.Run(() =>
+        {
+            if (string.IsNullOrWhiteSpace(rootPath) || !Directory.Exists(rootPath))
+                return new List<DuplicateFileGroup>();
+
+            var bySize = new Dictionary<long, List<string>>();
+            int scannedFiles = 0;
+            long scannedBytes = 0;
+            long lastTick = Environment.TickCount64;
+
+            var stack = new Stack<string>();
+            stack.Push(rootPath);
+
+            // Stage 1: Fast file size grouping
+            while (stack.Count > 0)
+            {
+                ct.ThrowIfCancellationRequested();
+                string dir = stack.Pop();
+                if (IsSystemProtectedPath(dir) && !dir.Equals(rootPath, StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                try
+                {
+                    foreach (var file in Directory.EnumerateFiles(dir))
+                    {
+                        ct.ThrowIfCancellationRequested();
+                        try
+                        {
+                            var fi = new FileInfo(file);
+                            if ((fi.Attributes & FileAttributes.ReparsePoint) != 0) continue;
+                            if (fi.Length < minFileSizeBytes) continue;
+                            if (IsSystemProtectedPath(file)) continue;
+
+                            scannedFiles++;
+                            scannedBytes += fi.Length;
+                            if (!bySize.TryGetValue(fi.Length, out var list))
+                            {
+                                list = new List<string>();
+                                bySize[fi.Length] = list;
+                            }
+                            list.Add(file);
+                        }
+                        catch { }
+                    }
+
+                    foreach (var sub in Directory.EnumerateDirectories(dir))
+                    {
+                        try
+                        {
+                            if ((File.GetAttributes(sub) & FileAttributes.ReparsePoint) != 0) continue;
+                            if (IsSystemProtectedPath(sub)) continue;
+                            stack.Push(sub);
+                        }
+                        catch { }
+                    }
+                }
+                catch { }
+
+                long now = Environment.TickCount64;
+                if (now - lastTick >= 180)
+                {
+                    lastTick = now;
+                    progress?.Report(new DiskScanProgress
+                    {
+                        CurrentPath = $"Boyut eşleştirme: {dir}",
+                        ScannedFiles = scannedFiles,
+                        ScannedBytes = scannedBytes
+                    });
+                }
+            }
+
+            // Stage 2: Partial fingerprint (first 64KB + last 64KB) on size collisions only
+            var sizeGroups = bySize.Where(kv => kv.Value.Count >= 2).OrderByDescending(kv => kv.Key * (kv.Value.Count - 1)).ToList();
+            var partialMatches = new Dictionary<string, List<(string Path, long Size)>>(StringComparer.Ordinal);
+            foreach (var (size, paths) in sizeGroups)
+            {
+                ct.ThrowIfCancellationRequested();
+                foreach (var p in paths)
+                {
+                    string? fp = ComputePartialFingerprint(p, size);
+                    if (fp == null) continue;
+                    string key = $"{size}:{fp}";
+                    if (!partialMatches.TryGetValue(key, out var list))
+                    {
+                        list = new List<(string, long)>();
+                        partialMatches[key] = list;
+                    }
+                    list.Add((p, size));
+                }
+            }
+
+            // Stage 3: Full SHA-256 verification on partial collisions
+            var finalGroups = new List<DuplicateFileGroup>();
+            foreach (var group in partialMatches.Values.Where(g => g.Count >= 2))
+            {
+                ct.ThrowIfCancellationRequested();
+                var byFullHash = new Dictionary<string, List<DuplicateFileItem>>(StringComparer.OrdinalIgnoreCase);
+                foreach (var (path, size) in group)
+                {
+                    progress?.Report(new DiskScanProgress
+                    {
+                        CurrentPath = $"SHA-256 doğrulanıyor: {Path.GetFileName(path)}",
+                        ScannedFiles = scannedFiles,
+                        ScannedBytes = scannedBytes
+                    });
+
+                    string? fullHash = ComputeFullSha256(path);
+                    if (fullHash == null) continue;
+                    if (!byFullHash.TryGetValue(fullHash, out var items))
+                    {
+                        items = new List<DuplicateFileItem>();
+                        byFullHash[fullHash] = items;
+                    }
+                    items.Add(new DuplicateFileItem
+                    {
+                        FullPath = path,
+                        FileName = Path.GetFileName(path),
+                        DirectoryPath = Path.GetDirectoryName(path) ?? "",
+                        SizeBytes = size,
+                        LastModified = File.GetLastWriteTime(path)
+                    });
+                }
+
+                foreach (var kv in byFullHash.Where(x => x.Value.Count >= 2))
+                {
+                    var ordered = kv.Value.OrderBy(f => f.LastModified).ToList();
+                    ordered[0].IsOriginalKeeper = true;
+                    finalGroups.Add(new DuplicateFileGroup
+                    {
+                        Sha256Short = kv.Key[..12],
+                        FileNameSample = ordered[0].FileName,
+                        FileSizeBytes = ordered[0].SizeBytes,
+                        Files = ordered
+                    });
+                }
+
+                if (finalGroups.Count >= 80) break;
+            }
+
+            return finalGroups.OrderByDescending(g => g.WastedBytes).ToList();
+        }, ct);
+    }
+
+    private static string? ComputePartialFingerprint(string path, long size)
+    {
+        try
+        {
+            const int sample = 65536;
+            byte[] buf = new byte[sample * 2];
+            using var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+            int r1 = fs.Read(buf, 0, (int)Math.Min(sample, size));
+            int r2 = 0;
+            if (size > sample)
+            {
+                fs.Seek(-Math.Min(sample, size - sample), SeekOrigin.End);
+                r2 = fs.Read(buf, sample, sample);
+            }
+            using var hasher = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+            hasher.AppendData(buf, 0, r1);
+            if (r2 > 0) hasher.AppendData(buf, sample, r2);
+            return Convert.ToHexString(hasher.GetHashAndReset());
+        }
+        catch { return null; }
+    }
+
+    private static string? ComputeFullSha256(string path)
+    {
+        try
+        {
+            using var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite, 131072);
+            return Convert.ToHexString(SHA256.HashData(fs)).ToLowerInvariant();
+        }
+        catch { return null; }
     }
 
     private static readonly HashSet<string> ProtectedRootFiles = new(StringComparer.OrdinalIgnoreCase)

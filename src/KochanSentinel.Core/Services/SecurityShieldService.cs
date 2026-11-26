@@ -44,6 +44,7 @@ public sealed class SecurityShieldService : IDisposable
     private ManagementEventWatcher? _processTraceWatcher;
     private EventLogWatcher? _psScriptBlockWatcher;
     private string _virusTotalApiKey = "";
+    private string _malwareBazaarAuthKey = "";
 
     private static readonly (string RuleName, string[] Tokens, int MinMatches)[] YaraStyleRules =
     {
@@ -73,9 +74,10 @@ public sealed class SecurityShieldService : IDisposable
     public event Action<SecurityEvent>? OnSecurityEvent;
     public event Action<FileScanResult>? OnRealTimeFileScanned;
 
-    public void StartRealTimeShield(string virusTotalApiKey = "")
+    public void StartRealTimeShield(string virusTotalApiKey = "", string malwareBazaarAuthKey = "")
     {
         _virusTotalApiKey = virusTotalApiKey;
+        _malwareBazaarAuthKey = malwareBazaarAuthKey;
         if (IsRealTimeEnabled) return;
 
         var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
@@ -275,9 +277,14 @@ public sealed class SecurityShieldService : IDisposable
         _psScriptBlockWatcher = null;
     }
 
+    public void UpdateApiKeys(string virusTotalApiKey, string malwareBazaarAuthKey)
+    {
+        _virusTotalApiKey = virusTotalApiKey ?? "";
+        _malwareBazaarAuthKey = malwareBazaarAuthKey ?? "";
+    }
+
     public void StopRealTimeShield()
     {
-        StopHiddenProcessDetector();
         foreach (var w in _watchers)
         {
             w.EnableRaisingEvents = false;
@@ -312,7 +319,7 @@ public sealed class SecurityShieldService : IDisposable
             await Task.Delay(1200);
             if (!File.Exists(e.FullPath)) return;
 
-            var result = await ScanFileAsync(e.FullPath, _virusTotalApiKey);
+            var result = await ScanFileAsync(e.FullPath, _virusTotalApiKey, _malwareBazaarAuthKey);
             OnRealTimeFileScanned?.Invoke(result);
 
             var sev = result.RiskLevel;
@@ -320,7 +327,7 @@ public sealed class SecurityShieldService : IDisposable
         });
     }
 
-    public async Task<FileScanResult> ScanFileAsync(string filePath, string? virusTotalApiKey = null, CancellationToken ct = default)
+    public async Task<FileScanResult> ScanFileAsync(string filePath, string? virusTotalApiKey = null, string? malwareBazaarAuthKey = null, CancellationToken ct = default)
     {
         var result = new FileScanResult
         {
@@ -374,7 +381,7 @@ public sealed class SecurityShieldService : IDisposable
         result.DefenderResult = await RunDefenderScanAsync(filePath, ct);
 
         // 6. Cloud Threat Intel (MalwareBazaar + optional VirusTotal)
-        result.CloudIntelResult = await CheckCloudIntelAsync(result.Sha256, virusTotalApiKey, ct);
+        result.CloudIntelResult = await CheckCloudIntelAsync(result.Sha256, virusTotalApiKey, malwareBazaarAuthKey, ct);
 
         // 7. Compute Final Verdict & Risk Level
         EvaluateVerdict(result);
@@ -515,7 +522,7 @@ public sealed class SecurityShieldService : IDisposable
         }
     }
 
-    private static async Task<string> CheckCloudIntelAsync(string sha256, string? vtKey, CancellationToken ct)
+    private static async Task<string> CheckCloudIntelAsync(string sha256, string? vtKey, string? mbAuthKey, CancellationToken ct)
     {
         if (sha256.Length != 64) return "Hash geçersiz";
 
@@ -551,16 +558,22 @@ public sealed class SecurityShieldService : IDisposable
             catch { }
         }
 
-        // 2. MalwareBazaar (abuse.ch) hash lookup
+        // 2. MalwareBazaar (abuse.ch) hash lookup (with optional Auth-Key header)
         string mbSummary;
         try
         {
-            using var content = new FormUrlEncodedContent(new Dictionary<string, string>
+            using var req = new HttpRequestMessage(HttpMethod.Post, "https://mb-api.abuse.ch/api/v1/")
             {
-                ["query"] = "get_info",
-                ["hash"] = sha256
-            });
-            using var resp = await Http.PostAsync("https://mb-api.abuse.ch/api/v1/", content, ct);
+                Content = new FormUrlEncodedContent(new Dictionary<string, string>
+                {
+                    ["query"] = "get_info",
+                    ["hash"] = sha256
+                })
+            };
+            if (!string.IsNullOrWhiteSpace(mbAuthKey))
+                req.Headers.Add("Auth-Key", mbAuthKey.Trim());
+
+            using var resp = await Http.SendAsync(req, ct);
             if (resp.IsSuccessStatusCode)
             {
                 var json = await resp.Content.ReadAsStringAsync(ct);
@@ -573,7 +586,7 @@ public sealed class SecurityShieldService : IDisposable
             }
             else if ((int)resp.StatusCode is 401 or 403)
             {
-                mbSummary = "MalwareBazaar: API Auth-Key gerekiyor";
+                mbSummary = "MalwareBazaar: Ayarlar'dan ücretsiz Auth-Key girilebilir";
             }
             else
             {
@@ -628,7 +641,7 @@ public sealed class SecurityShieldService : IDisposable
     // =========================================================================
     private static readonly HashSet<string> BuiltInSafeBinaries = new(StringComparer.OrdinalIgnoreCase)
     {
-        "SecurityHealthSystray.exe", "ctfmon.exe", "explorer.exe", "KochanSentinel.App.exe"
+        "SecurityHealthSystray.exe", "ctfmon.exe", "explorer.exe", "KochanSentinel.exe", "KochanSentinel.App.exe"
     };
 
     public async Task<List<SecurityFinding>> RunPersistenceAuditAsync(
@@ -921,7 +934,7 @@ public sealed class SecurityShieldService : IDisposable
                     continue;
 
                 var exe = ExtractExecutablePath(action);
-                if (!string.IsNullOrEmpty(exe) && exe.Contains("KochanSentinel.App", StringComparison.OrdinalIgnoreCase))
+                if (!string.IsNullOrEmpty(exe) && exe.Contains("KochanSentinel", StringComparison.OrdinalIgnoreCase))
                     continue;
                 bool signed = !string.IsNullOrEmpty(exe) && File.Exists(exe) && NativeMethods.VerifyFileOrCatalogSignature(exe);
 
@@ -1492,6 +1505,7 @@ public sealed class SecurityShieldService : IDisposable
 
     public void Dispose()
     {
+        StopHiddenProcessDetector();
         StopRealTimeShield();
     }
 }

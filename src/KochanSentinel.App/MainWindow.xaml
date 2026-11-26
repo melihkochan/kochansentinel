@@ -3,20 +3,23 @@
                  xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
                  xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
                  xmlns:controls="clr-namespace:KochanSentinel.App.Controls"
+                 xmlns:views="clr-namespace:KochanSentinel.App.Views"
                  Title="KOCHAN Sentinel"
-                 Width="1240"
-                 Height="790"
+                 Width="1260"
+                 Height="800"
                  MinWidth="1040"
                  MinHeight="690"
                  Background="#09090B"
                  WindowStartupLocation="CenterScreen"
                  WindowBackdropType="None"
                  ExtendsContentIntoTitleBar="True"
+                 PreviewKeyDown="Window_PreviewKeyDown"
                  Closing="MainWindow_Closing">
 
     <Grid Background="#09090B">
         <Grid.RowDefinitions>
             <RowDefinition Height="32" />
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
             <RowDefinition Height="28" />
         </Grid.RowDefinitions>
@@ -24,8 +27,46 @@
         <!-- TitleBar -->
         <ui:TitleBar Grid.Row="0" Title="KOCHAN Sentinel — Sistem Performans &amp; Güvenlik Merkezi" Height="32" Padding="10,0" Background="#09090B" />
 
+        <!-- Global One-Click Auto-Update Banner (Appears automatically when a new GitHub Release is available) -->
+        <Border Grid.Row="1" Background="#052E16" BorderBrush="#166534" BorderThickness="0,0,0,1" Padding="14,8"
+                Visibility="{Binding HasAvailableUpdate, Converter={StaticResource BoolToVis}}">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,14,0">
+                    <StackPanel Orientation="Horizontal">
+                        <Path Style="{StaticResource ShadcnIconPath}" Data="{StaticResource GeoRefresh}" Stroke="#4ADE80" Width="13" Height="13" Margin="0,0,8,0" />
+                        <TextBlock Text="{Binding UpdateBannerText}" Foreground="#ECFDF5" FontSize="12.5" FontWeight="SemiBold" VerticalAlignment="Center" />
+                    </StackPanel>
+                    <ProgressBar Value="{Binding UpdateProgressPercent, Mode=OneWay}" Maximum="100" Height="4" Margin="0,6,0,0" Foreground="#4ADE80"
+                                 Visibility="{Binding IsDownloadingUpdate, Converter={StaticResource BoolToVis}}" />
+                </StackPanel>
+                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Button Content="Sürüm Notları" Style="{StaticResource ShadcnSecondaryBtn}" Padding="10,4" Margin="0,0,6,0"
+                            Command="{Binding ShowUpdateReleaseNotesCommand}" />
+                    <Button Content="⚡ Şimdi Güncelle (Otomatik)" Padding="12,4" Margin="0,0,6,0"
+                            Command="{Binding InstallAvailableUpdateCommand}">
+                        <Button.Style>
+                            <Style TargetType="Button" BasedOn="{StaticResource ShadcnPrimaryBtn}">
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsDownloadingUpdate}" Value="True">
+                                        <Setter Property="IsEnabled" Value="False" />
+                                        <Setter Property="Content" Value="İndiriliyor..." />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                    </Button>
+                    <Button Content="✕" Foreground="#86EFAC" Background="Transparent" BorderThickness="0" Padding="6,2" Cursor="Hand"
+                            Command="{Binding DismissUpdateBannerCommand}" />
+                </StackPanel>
+            </Grid>
+        </Border>
+
         <!-- Main Body: Left Sidebar + Content -->
-        <Grid Grid.Row="1" Margin="12,6,12,6">
+        <Grid Grid.Row="2" Margin="12,6,12,6">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="228" />
                 <ColumnDefinition Width="*" />
@@ -96,7 +137,7 @@
                                     <TextBlock Text="SENTINEL GUARD" FontSize="9.5" Foreground="#71717A" FontWeight="SemiBold" Margin="0,1,0,0" />
                                 </StackPanel>
                                 <Border Grid.Column="2" Background="#09090B" CornerRadius="5" Padding="6,2" VerticalAlignment="Top" BorderBrush="#27272A" BorderThickness="1">
-                                    <TextBlock Text="v1.0.1" FontSize="9.5" FontWeight="SemiBold" Foreground="#A1A1AA" />
+                                    <TextBlock Text="{Binding AppVersionText}" FontSize="9.5" FontWeight="SemiBold" Foreground="#A1A1AA" />
                                 </Border>
                             </Grid>
 
@@ -127,6 +168,23 @@
                                     <Path Grid.Column="2" Style="{StaticResource ShadcnIconPath}" Data="{StaticResource GeoShield}" Width="11" Height="11" Stroke="#4ADE80" />
                                 </Grid>
                             </Border>
+
+                            <!-- Command Palette Trigger (Ctrl+K) -->
+                            <Button Style="{StaticResource ShadcnSecondaryBtn}" Margin="0,8,0,0" Padding="8,5" HorizontalContentAlignment="Stretch"
+                                    Command="{Binding OpenCommandPaletteCommand}" ToolTip="Tüm araçlara ve sayfalara hızlı erişim (Ctrl + K)">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <Path Grid.Column="0" Style="{StaticResource ShadcnIconPath}" Data="{StaticResource GeoSearch}" Width="11" Height="11" Stroke="#71717A" Margin="0,0,6,0" />
+                                    <TextBlock Grid.Column="1" Text="Hızlı Ara..." Foreground="#A1A1AA" FontSize="11" VerticalAlignment="Center" />
+                                    <Border Grid.Column="2" Background="#09090B" BorderBrush="#27272A" BorderThickness="1" CornerRadius="4" Padding="5,1">
+                                        <TextBlock Text="Ctrl+K" Foreground="#71717A" FontSize="9.5" FontWeight="SemiBold" />
+                                    </Border>
+                                </Grid>
+                            </Button>
                         </StackPanel>
                     </Border>
 
@@ -152,7 +210,7 @@
                     <!-- Categorized Nav Items -->
                     <StackPanel>
                         <TextBlock Text="İZLEME" Style="{StaticResource NavCategoryStyle}" Margin="8,2,0,4" />
-                        <RadioButton Style="{StaticResource NavRadioStyle}" Tag="0" IsChecked="True" Checked="NavRadio_Checked">
+                        <RadioButton x:Name="NavRadioDashboard" Style="{StaticResource NavRadioStyle}" Tag="0" IsChecked="True" Checked="NavRadio_Checked">
                             <StackPanel Orientation="Horizontal">
                                 <ui:SymbolIcon Symbol="Home24" FontSize="16" Margin="0,0,10,0" />
                                 <TextBlock Text="Genel Bakış" VerticalAlignment="Center" />
@@ -166,13 +224,13 @@
                         </RadioButton>
 
                         <TextBlock Text="OPTİMİZASYON" Style="{StaticResource NavCategoryStyle}" />
-                        <RadioButton Style="{StaticResource NavRadioStyle}" Tag="2" Checked="NavRadio_Checked">
+                        <RadioButton x:Name="NavRadioCleaner" Style="{StaticResource NavRadioStyle}" Tag="2" Checked="NavRadio_Checked">
                             <StackPanel Orientation="Horizontal">
                                 <ui:SymbolIcon Symbol="Broom24" FontSize="16" Margin="0,0,10,0" />
                                 <TextBlock Text="Temizlik &amp; RAM" VerticalAlignment="Center" />
                             </StackPanel>
                         </RadioButton>
-                        <RadioButton Style="{StaticResource NavRadioStyle}" Tag="7" Checked="NavRadio_Checked">
+                        <RadioButton x:Name="NavRadioDisk" Style="{StaticResource NavRadioStyle}" Tag="7" Checked="NavRadio_Checked">
                             <StackPanel Orientation="Horizontal">
                                 <Path Data="M2,5 A2,2 0 0 1 4,3 H9 L11,5 H20 A2,2 0 0 1 22,7 V19 A2,2 0 0 1 20,21 H4 A2,2 0 0 1 2,19 Z"
                                       Width="15" Height="15" Stretch="Uniform" VerticalAlignment="Center" Margin="0,0,11,0"
@@ -180,13 +238,13 @@
                                 <TextBlock Text="Disk Analizi" VerticalAlignment="Center" />
                             </StackPanel>
                         </RadioButton>
-                        <RadioButton Style="{StaticResource NavRadioStyle}" Tag="3" Checked="NavRadio_Checked">
+                        <RadioButton x:Name="NavRadioGames" Style="{StaticResource NavRadioStyle}" Tag="3" Checked="NavRadio_Checked">
                             <StackPanel Orientation="Horizontal">
                                 <ui:SymbolIcon Symbol="Games24" FontSize="16" Margin="0,0,10,0" />
                                 <TextBlock Text="Oyun Merkezi" VerticalAlignment="Center" />
                             </StackPanel>
                         </RadioButton>
-                        <RadioButton Style="{StaticResource NavRadioStyle}" Tag="6" Checked="NavRadio_Checked">
+                        <RadioButton x:Name="NavRadioBenchmark" Style="{StaticResource NavRadioStyle}" Tag="6" Checked="NavRadio_Checked">
                             <StackPanel Orientation="Horizontal">
                                 <Path Data="M3,13 H6.5 V21 H3 Z M10.2,6 H13.7 V21 H10.2 Z M17.5,2 H21 V21 H17.5 Z"
                                       Width="15" Height="15" Stretch="Uniform" VerticalAlignment="Center" Margin="0,0,11,0"
@@ -196,13 +254,13 @@
                         </RadioButton>
 
                         <TextBlock Text="SİSTEM &amp; KORUMA" Style="{StaticResource NavCategoryStyle}" />
-                        <RadioButton Style="{StaticResource NavRadioStyle}" Tag="4" Checked="NavRadio_Checked">
+                        <RadioButton x:Name="NavRadioSecurity" Style="{StaticResource NavRadioStyle}" Tag="4" Checked="NavRadio_Checked">
                             <StackPanel Orientation="Horizontal">
                                 <ui:SymbolIcon Symbol="ShieldCheckmark24" FontSize="16" Margin="0,0,10,0" />
                                 <TextBlock Text="Güvenlik &amp; Kalıntı" VerticalAlignment="Center" />
                             </StackPanel>
                         </RadioButton>
-                        <RadioButton Style="{StaticResource NavRadioStyle}" Tag="5" Checked="NavRadio_Checked">
+                        <RadioButton x:Name="NavRadioSettings" Style="{StaticResource NavRadioStyle}" Tag="5" Checked="NavRadio_Checked">
                             <StackPanel Orientation="Horizontal">
                                 <ui:SymbolIcon Symbol="Settings24" FontSize="16" Margin="0,0,10,0" />
                                 <TextBlock Text="Ayarlar" VerticalAlignment="Center" />
@@ -237,20 +295,29 @@
                                         <Run Text=" (" /><Run Text="{Binding Metrics.GpuLoadPercent, TargetNullValue=0, StringFormat={}{0:F0}%}" Foreground="#C084FC" /><Run Text=")" />
                                         <Run Text="  |  FPS: " /><Run Text="{Binding Metrics.CurrentFps, TargetNullValue=--}" Foreground="#4ADE80" FontWeight="SemiBold" />
                                         <Run Text="  |  Fan: " /><Run Text="{Binding Metrics.FanRpm, TargetNullValue=--, StringFormat={}{0} RPM}" Foreground="#A1A1AA" />
+                                        <Run Text="  |  Boot: " /><Run Text="{Binding BootPerformance.LastBootSeconds, TargetNullValue=--, StringFormat={}{0:F1} sn}" Foreground="#38BDF8" FontWeight="SemiBold" />
                                         <Run Text="  |  Süre: " /><Run Text="{Binding Metrics.Uptime, StringFormat={}{0:hh\\:mm\\:ss}}" Foreground="#E4E4E7" />
                                     </TextBlock>
                                 </StackPanel>
                                 <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
                                     <Button Style="{StaticResource ShadcnSecondaryBtn}"
-                                            Height="38" Padding="14,0" Margin="0,0,8,0" Click="ToggleMiniHud_Click"
-                                            ToolTip="Monitörünün köşesine yerleştirebileceğin mini CPU/RAM/FPS/Ağ göstergesini aç/kapat (Alt + Z)">
+                                            Height="38" Padding="12,0" Margin="0,0,8,0" Click="ExportHtmlReport_Click"
+                                            ToolTip="Donanım, sıcaklık, benchmark ve güvenlik durumunu tek HTML raporu olarak kaydet">
                                         <StackPanel Orientation="Horizontal">
-                                            <Path Style="{StaticResource ShadcnIconPath}" Data="{StaticResource GeoPin}" Stroke="#FAFAFA" Margin="0,0,7,0" />
+                                            <Path Style="{StaticResource ShadcnIconPath}" Data="{StaticResource GeoHistory}" Stroke="#38BDF8" Margin="0,0,6,0" />
+                                            <TextBlock Text="HTML Rapor" VerticalAlignment="Center" />
+                                        </StackPanel>
+                                    </Button>
+                                    <Button Style="{StaticResource ShadcnSecondaryBtn}"
+                                            Height="38" Padding="12,0" Margin="0,0,8,0" Click="ToggleMiniHud_Click"
+                                            ToolTip="Monitörünün köşesine yerleştirebileceğin mini CPU/RAM/FPS/Ağ göstergesini aç/kapat">
+                                        <StackPanel Orientation="Horizontal">
+                                            <Path Style="{StaticResource ShadcnIconPath}" Data="{StaticResource GeoPin}" Stroke="#FAFAFA" Margin="0,0,6,0" />
                                             <TextBlock Text="Mini HUD" VerticalAlignment="Center" />
                                         </StackPanel>
                                     </Button>
                                     <Button Style="{StaticResource ShadcnPrimaryBtn}"
-                                            Height="38" Padding="18,0" FontSize="13.5" Command="{Binding QuickBoostCommand}">
+                                            Height="38" Padding="16,0" FontSize="13.5" Command="{Binding QuickBoostCommand}">
                                         <StackPanel Orientation="Horizontal">
                                             <Path Style="{StaticResource ShadcnIconPath}" Data="{StaticResource GeoZap}" Stroke="#09090B" Fill="#09090B" Margin="0,0,7,0" />
                                             <TextBlock Text="Tek Tıkla Hızlandır" VerticalAlignment="Center" />
@@ -477,6 +544,7 @@
                                         <RadioButton Content="Ağ Kalkanı &amp; GeoIP" Style="{StaticResource ShadcnSegmentedTab}" GroupName="ProcSub" Tag="1" Checked="ProcessesSubTab_Checked" />
                                         <RadioButton Content="Engellenen Uygulamalar" Style="{StaticResource ShadcnSegmentedTab}" GroupName="ProcSub" Tag="2" Checked="ProcessesSubTab_Checked" />
                                         <RadioButton Content="DNS Önbelleği" Style="{StaticResource ShadcnSegmentedTab}" GroupName="ProcSub" Tag="3" Checked="ProcessesSubTab_Checked" />
+                                        <RadioButton Content="Güvenli DNS (DoH)" Style="{StaticResource ShadcnSegmentedTab}" GroupName="ProcSub" Tag="4" Checked="ProcessesSubTab_Checked" />
                                     </WrapPanel>
                                 </Border>
                                 <Button x:Name="BtnRefreshNetShield" Grid.Column="1" Style="{StaticResource ShadcnSecondaryBtn}" Margin="10,0,0,0"
@@ -559,6 +627,28 @@
                                   ScrollViewer.HorizontalScrollBarVisibility="Auto"
                                   Background="#111113" Foreground="#E4E4E7" RowBackground="#111113" AlternatingRowBackground="#18181B"
                                   GridLinesVisibility="Horizontal" HorizontalGridLinesBrush="#27272A" BorderBrush="#27272A" BorderThickness="1">
+                            <DataGrid.ContextMenu>
+                                <ContextMenu Background="#18181B" Foreground="#FAFAFA" BorderBrush="#3F3F46">
+                                    <MenuItem Header="⚡ Verimlilik Modu (EcoQoS)" Command="{Binding EcoModeProcessCommand}" />
+                                    <MenuItem Header="⏸ Askıya Al (Dondur)" Command="{Binding SuspendProcessCommand}" />
+                                    <MenuItem Header="▶ Devam Ettir" Command="{Binding ResumeProcessCommand}" />
+                                    <Separator />
+                                    <MenuItem Header="⚙ Öncelik Ayarla">
+                                        <MenuItem Header="Yüksek (High)" Command="{Binding SetProcessPriorityCommand}" CommandParameter="High" />
+                                        <MenuItem Header="Normalin Üstünde" Command="{Binding SetProcessPriorityCommand}" CommandParameter="AboveNormal" />
+                                        <MenuItem Header="Normal" Command="{Binding SetProcessPriorityCommand}" CommandParameter="Normal" />
+                                        <MenuItem Header="Normalin Altında" Command="{Binding SetProcessPriorityCommand}" CommandParameter="BelowNormal" />
+                                        <MenuItem Header="Düşük (Idle)" Command="{Binding SetProcessPriorityCommand}" CommandParameter="Idle" />
+                                    </MenuItem>
+                                    <Separator />
+                                    <MenuItem Header="🛡️ Dosyayı EDR ile Tara" Command="{Binding ScanSelectedProcessExeCommand}" />
+                                    <MenuItem Header="📁 Dosya Konumunu Aç" Command="{Binding OpenProcessLocationCommand}" />
+                                    <MenuItem Header="🚫 Firewall İnternetini Kes" Command="{Binding BlockProcessFirewallCommand}" />
+                                    <MenuItem Header="🌐 Firewall Engelini Kaldır" Command="{Binding UnblockProcessFirewallCommand}" />
+                                    <Separator />
+                                    <MenuItem Header="✕ İşlemi Sonlandır" Foreground="#FCA5A5" Command="{Binding KillProcessCommand}" />
+                                </ContextMenu>
+                            </DataGrid.ContextMenu>
                             <DataGrid.Columns>
                                 <DataGridTemplateColumn Header="İşlem Adı" Width="155">
                                     <DataGridTemplateColumn.CellTemplate>
@@ -625,7 +715,14 @@
                                         </DataTemplate>
                                     </DataGridTemplateColumn.CellTemplate>
                                 </DataGridTemplateColumn>
-                                <DataGridTemplateColumn Header="Ağ" Width="48">
+                                <DataGridTemplateColumn Header="Ağ Hızı" Width="108">
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <TextBlock Text="{Binding NetSpeedText}" Foreground="#4ADE80" FontWeight="SemiBold" FontSize="11.5" VerticalAlignment="Center" />
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
+                                <DataGridTemplateColumn Header="Ağ" Width="44">
                                     <DataGridTemplateColumn.CellTemplate>
                                         <DataTemplate>
                                             <TextBlock Text="{Binding ActiveConnections}" Foreground="#4ADE80" FontWeight="Bold" VerticalAlignment="Center" />
@@ -771,6 +868,64 @@
                             </DataGridTemplateColumn>
                         </DataGrid.Columns>
                     </DataGrid>
+
+                    <!-- Sub-Panel 4: One-Click Secure DNS (DoH) Switcher -->
+                    <ScrollViewer x:Name="PanelDnsSwitcher" Grid.Row="1" Visibility="Collapsed" VerticalScrollBarVisibility="Auto">
+                        <StackPanel>
+                            <Border Background="#111113" CornerRadius="8" Padding="16" Margin="0,0,0,10" BorderBrush="#27272A" BorderThickness="1">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel>
+                                        <TextBlock Text="Tek Tıkla Güvenli DNS &amp; Windows 11 DoH Değiştirici" FontSize="16" FontWeight="SemiBold" Foreground="#FAFAFA" />
+                                        <TextBlock Foreground="#A1A1AA" FontSize="12" Margin="0,4,0,0">
+                                            <Run Text="Mevcut DNS Sunucuları: " /><Run Text="{Binding CurrentDnsText}" Foreground="#38BDF8" FontWeight="SemiBold" />
+                                        </TextBlock>
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                                        <TextBlock Text="Bağdaştırıcı:" Foreground="#A1A1AA" FontSize="12" VerticalAlignment="Center" Margin="0,0,8,0" />
+                                        <ComboBox Width="190" ItemsSource="{Binding ActiveNetworkAdapters}" SelectedItem="{Binding SelectedDnsAdapter}" Margin="0,0,8,0" />
+                                        <Button Content="Yenile" Style="{StaticResource ShadcnSecondaryBtn}" Command="{Binding RefreshDnsAdaptersCommand}" />
+                                    </StackPanel>
+                                </Grid>
+                            </Border>
+
+                            <ItemsControl ItemsSource="{Binding DnsProfiles}">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <UniformGrid Columns="2" />
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border Background="#111113" CornerRadius="8" Padding="15" Margin="4" BorderBrush="#27272A" BorderThickness="1">
+                                            <Grid>
+                                                <Grid.RowDefinitions>
+                                                    <RowDefinition Height="*" />
+                                                    <RowDefinition Height="Auto" />
+                                                </Grid.RowDefinitions>
+                                                <StackPanel Grid.Row="0">
+                                                    <DockPanel>
+                                                        <TextBlock Text="{Binding Name}" Foreground="#FAFAFA" FontSize="14" FontWeight="SemiBold" />
+                                                        <Border Background="#18181B" BorderBrush="#27272A" BorderThickness="1" CornerRadius="5" Padding="7,2" DockPanel.Dock="Right" HorizontalAlignment="Right">
+                                                            <TextBlock Text="{Binding ServersLabel}" Foreground="#38BDF8" FontSize="10.5" FontWeight="SemiBold" />
+                                                        </Border>
+                                                    </DockPanel>
+                                                    <TextBlock Text="{Binding Description}" Foreground="#A1A1AA" FontSize="12" TextWrapping="Wrap" Margin="0,6,0,10" />
+                                                </StackPanel>
+                                                <Button Grid.Row="1" Content="Bu DNS Profilini Uygula &amp; Önbelleği Temizle" Style="{StaticResource ShadcnPrimaryBtn}"
+                                                        HorizontalAlignment="Left"
+                                                        Command="{Binding DataContext.ApplyDnsProfileCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                        CommandParameter="{Binding}" />
+                                            </Grid>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </ScrollViewer>
                 </Grid>
 
                 <!-- TAB 2: CLEANER, RAM & TWEAKS/REPAIR -->
@@ -791,6 +946,7 @@
                                 <StackPanel Orientation="Horizontal">
                                     <RadioButton Content="Çöp &amp; RAM Temizliği" Style="{StaticResource ShadcnSegmentedTab}" GroupName="CleanSub" Tag="0" IsChecked="True" Checked="CleanerSubTab_Checked" />
                                     <RadioButton Content="Sistem Tweaks &amp; Onarım (SFC / DISM)" Style="{StaticResource ShadcnSegmentedTab}" GroupName="CleanSub" Tag="1" Checked="CleanerSubTab_Checked" />
+                                    <RadioButton Content="Başlangıç &amp; Boot Süresi" Style="{StaticResource ShadcnSegmentedTab}" GroupName="CleanSub" Tag="2" Checked="CleanerSubTab_Checked" />
                                 </StackPanel>
                             </Border>
                             <TextBlock Grid.Column="1" Text="Otomatik Sistem Geri Yükleme sigortası Ayarlar'dan yönetilir." Foreground="#71717A" FontSize="11.5"
@@ -997,6 +1153,76 @@
                                 </Border>
                             </DockPanel>
                         </Border>
+                    </Grid>
+
+                    <!-- Sub-Panel 2: Boot Time Performance & Non-Destructive Startup Manager -->
+                    <Grid x:Name="PanelStartupManager" Grid.Row="1" Visibility="Collapsed">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
+
+                        <Border Grid.Row="0" Background="#111113" CornerRadius="8" Padding="16" Margin="0,0,0,10" BorderBrush="#27272A" BorderThickness="1">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Margin="0,0,14,0">
+                                    <TextBlock Text="Windows Açılış Süresi (Boot) &amp; Başlangıç Yöneticisi" FontSize="16" FontWeight="SemiBold" Foreground="#FAFAFA" />
+                                    <TextBlock Text="{Binding BootPerformance.SummaryText}" Foreground="#38BDF8" FontSize="12.5" FontWeight="SemiBold" Margin="0,4,0,2" TextWrapping="Wrap" />
+                                    <TextBlock Text="{Binding StartupManagerSummary}" Foreground="#A1A1AA" FontSize="11.5" TextWrapping="Wrap" />
+                                </StackPanel>
+                                <Button Grid.Column="1" Style="{StaticResource ShadcnPrimaryBtn}" VerticalAlignment="Center" Command="{Binding ScanStartupAppsCommand}">
+                                    <StackPanel Orientation="Horizontal">
+                                        <Path Style="{StaticResource ShadcnIconPath}" Data="{StaticResource GeoRefresh}" Stroke="#09090B" Width="12.5" Height="12.5" Margin="0,0,6,0" />
+                                        <TextBlock Text="Başlangıç Listesini Yenile" VerticalAlignment="Center" />
+                                    </StackPanel>
+                                </Button>
+                            </Grid>
+                        </Border>
+
+                        <DataGrid Grid.Row="1" ItemsSource="{Binding StartupApps}"
+                                  AutoGenerateColumns="False" IsReadOnly="True" CanUserAddRows="False"
+                                  ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                                  Background="#111113" Foreground="#E4E4E7" RowBackground="#111113" AlternatingRowBackground="#18181B"
+                                  GridLinesVisibility="Horizontal" HorizontalGridLinesBrush="#27272A" BorderBrush="#27272A" BorderThickness="1">
+                            <DataGrid.Columns>
+                                <DataGridTemplateColumn Header="Durum" Width="92">
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <TextBlock Text="{Binding StatusText}" Foreground="{Binding IsEnabled, Converter={StaticResource SignedToBrush}}" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
+                                <DataGridTextColumn Header="Uygulama" Binding="{Binding Name}" Width="180" />
+                                <DataGridTextColumn Header="Kaynak" Binding="{Binding Source}" Width="125" />
+                                <DataGridTextColumn Header="Açılış Etkisi" Binding="{Binding ImpactLevel}" Width="96" />
+                                <DataGridTemplateColumn Header="İmza" Width="88">
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <TextBlock Text="{Binding IsSigned, Converter={StaticResource SignedToText}}" Foreground="{Binding IsSigned, Converter={StaticResource SignedToBrush}}" FontSize="11.5" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
+                                <DataGridTemplateColumn Header="Komut / Yol" Width="*" MinWidth="180">
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <TextBlock Text="{Binding Command}" Foreground="#A1A1AA" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" ToolTip="{Binding Command}" />
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
+                                <DataGridTemplateColumn Header="İşlem" Width="145">
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <Button Content="{Binding ToggleButtonText}" Style="{StaticResource ShadcnSecondaryBtn}" Padding="9,3"
+                                                    Command="{Binding DataContext.ToggleStartupAppCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}"
+                                                    CommandParameter="{Binding}" />
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
+                            </DataGrid.Columns>
+                        </DataGrid>
                     </Grid>
                 </Grid>
 
@@ -1715,8 +1941,17 @@
                                         </StackPanel>
                                         <ui:ToggleSwitch Content="Windows ile birlikte arka planda başlat" IsChecked="{Binding Settings.StartWithWindows}" Margin="0,0,0,8" Checked="SettingControl_AutoSave" Unchecked="SettingControl_AutoSave" />
                                         <ui:ToggleSwitch Content="Pencere kapatıldığında sistem tepsisine küçült" IsChecked="{Binding Settings.MinimizeToTrayOnClose}" Margin="0,0,0,8" Checked="SettingControl_AutoSave" Unchecked="SettingControl_AutoSave" />
-                                        <ui:ToggleSwitch Content="Açılışta Mini HUD'ı göster (Kısayol: Alt + Z)" IsChecked="{Binding Settings.ShowMiniHudOnStart}" Margin="0,0,0,8" Checked="SettingControl_AutoSave" Unchecked="SettingControl_AutoSave" />
-                                        <ui:ToggleSwitch Content="Her gün 21:00 veya 15 dk boşta sessiz tarama &amp; temizlik" IsChecked="{Binding Settings.EnableAutoMaintenanceSchedule}" Checked="SettingControl_AutoSave" Unchecked="SettingControl_AutoSave" />
+                                        <ui:ToggleSwitch Content="Açılışta Mini HUD'ı göster" IsChecked="{Binding Settings.ShowMiniHudOnStart}" Margin="0,0,0,8" Checked="SettingControl_AutoSave" Unchecked="SettingControl_AutoSave" />
+                                        <ui:ToggleSwitch Content="Açılışta yeni GitHub sürümlerini sessizce denetle" IsChecked="{Binding Settings.AutoCheckUpdatesOnStart}" Margin="0,0,0,8" Checked="SettingControl_AutoSave" Unchecked="SettingControl_AutoSave" />
+                                        <ui:ToggleSwitch Content="Her gün 21:00 veya 15 dk boşta sessiz tarama &amp; temizlik" IsChecked="{Binding Settings.EnableAutoMaintenanceSchedule}" Margin="0,0,0,10" Checked="SettingControl_AutoSave" Unchecked="SettingControl_AutoSave" />
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="140" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Text="Windows 11 Pencere Efekti (Backdrop):" Foreground="#D4D4D8" FontSize="12" VerticalAlignment="Center" />
+                                            <ComboBox Grid.Column="1" ItemsSource="{Binding BackdropPresets}" SelectedItem="{Binding Settings.WindowBackdropMode, Mode=TwoWay}" SelectionChanged="SettingCombo_SelectionChanged" />
+                                        </Grid>
                                     </StackPanel>
                                 </Border>
 
@@ -1725,7 +1960,7 @@
                                     <StackPanel>
                                         <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
                                             <Path Style="{StaticResource ShadcnIconPath}" Data="{StaticResource GeoPin}" Stroke="#38BDF8" Margin="0,0,8,0" />
-                                            <TextBlock Text="Mini HUD Özelleştirme &amp; Saydamlık" FontSize="14.5" FontWeight="SemiBold" Foreground="#FAFAFA" />
+                                            <TextBlock Text="Mini HUD Özelleştirme &amp; Oyun İçi Mod" FontSize="14.5" FontWeight="SemiBold" Foreground="#FAFAFA" />
                                         </StackPanel>
                                         <UniformGrid Columns="3" Margin="0,0,0,8">
                                             <CheckBox Content="CPU %" Style="{StaticResource ShadcnCheckBox}" IsChecked="{Binding Settings.HudShowCpu}" Checked="SettingControl_AutoSave" Unchecked="SettingControl_AutoSave" Margin="0,3" />
@@ -1735,7 +1970,17 @@
                                             <CheckBox Content="Ağ Mbps" Style="{StaticResource ShadcnCheckBox}" IsChecked="{Binding Settings.HudShowNet}" Checked="SettingControl_AutoSave" Unchecked="SettingControl_AutoSave" Margin="0,3" />
                                             <CheckBox Content="Ping &amp; Jitter" Style="{StaticResource ShadcnCheckBox}" IsChecked="{Binding Settings.HudShowPing}" Checked="SettingControl_AutoSave" Unchecked="SettingControl_AutoSave" Margin="0,3" />
                                         </UniformGrid>
-                                        <DockPanel Margin="0,4,0,2">
+                                        <ui:ToggleSwitch Content="Click-Through (Oyun içi tıklama geçirgenliği — fare takılmaz)" IsChecked="{Binding Settings.HudClickThrough}" Margin="0,2,0,7" Checked="SettingControl_AutoSave" Unchecked="SettingControl_AutoSave" />
+                                        <ui:ToggleSwitch Content="Kompakt HUD Modu (Mini şerit, sparkline gizli)" IsChecked="{Binding Settings.HudCompactMode}" Margin="0,0,0,8" Checked="SettingControl_AutoSave" Unchecked="SettingControl_AutoSave" />
+                                        <Grid Margin="0,0,0,8">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="140" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Text="Global HUD Kısayolu (NVIDIA Alt+Z çakışmasız):" Foreground="#D4D4D8" FontSize="11.5" VerticalAlignment="Center" />
+                                            <ComboBox Grid.Column="1" ItemsSource="{Binding HotkeyPresets}" SelectedItem="{Binding Settings.HudHotkeyPreset, Mode=TwoWay}" SelectionChanged="SettingCombo_SelectionChanged" />
+                                        </Grid>
+                                        <DockPanel Margin="0,2,0,2">
                                             <TextBlock Text="HUD Arka Plan Saydamlığı:" Foreground="#D4D4D8" FontSize="12" VerticalAlignment="Center" />
                                             <TextBlock Text="{Binding Settings.HudOpacity, StringFormat={}{0:P0}}" Foreground="#38BDF8" FontSize="12" FontWeight="Bold" DockPanel.Dock="Right" HorizontalAlignment="Right" />
                                         </DockPanel>
@@ -1802,11 +2047,25 @@
                                         <ui:ToggleSwitch Content="Canlı RAT, Process Hollowing &amp; C2 ağ davranışını sürekli izle" IsChecked="{Binding Settings.EnableActiveRatMonitor}" Margin="0,0,0,7" Checked="SettingControl_AutoSave" Unchecked="SettingControl_AutoSave" />
                                         <ui:ToggleSwitch Content="Gizli PowerShell / Betik Süreç Dedektörü (Fast + 4104)" IsChecked="{Binding Settings.EnableHiddenProcessDetector}" Margin="0,0,0,7" Checked="SettingControl_AutoSave" Unchecked="SettingControl_AutoSave" />
                                         <ui:ToggleSwitch Content="Fidye Yazılımı Honeypot Kalkanı (Belgeler &amp; Masaüstü tuzağı)" IsChecked="{Binding Settings.EnableRansomwareHoneypot}" Margin="0,0,0,7" Checked="SettingControl_AutoSave" Unchecked="SettingControl_AutoSave" />
+                                        <ui:ToggleSwitch Content="Fidye Honeypot'ta otomatik sonlandır (Kapalıysa güvenle dondurur)" IsChecked="{Binding Settings.RansomwareAutoKillMode}" Margin="0,0,0,7" Checked="SettingControl_AutoSave" Unchecked="SettingControl_AutoSave" />
+                                        <ui:ToggleSwitch Content="Kripto Pano Koruması (Clipper cüzdan değişimi engelleyici)" IsChecked="{Binding Settings.EnableClipboardClipperGuard}" Margin="0,0,0,7" Checked="SettingControl_AutoSave" Unchecked="SettingControl_AutoSave" />
                                         <ui:ToggleSwitch Content="USB / Harici Bellek Takıldığında Otomatik Zararlı Taraması" IsChecked="{Binding Settings.EnableUsbShield}" Margin="0,0,0,7" Checked="SettingControl_AutoSave" Unchecked="SettingControl_AutoSave" />
                                         <ui:ToggleSwitch Content="Self-Defense Bekçi Süreci (KOCHAN dışarıdan kapatılırsa geri açar)" IsChecked="{Binding Settings.EnableSelfDefenseWatchdog}" Margin="0,0,0,7" Checked="SettingControl_AutoSave" Unchecked="SettingControl_AutoSave" />
-                                        <ui:ToggleSwitch Content="Temizlik &amp; Müdahale Öncesi Otomatik Geri Yükleme Noktası" IsChecked="{Binding Settings.EnableAutoRestorePoint}" Margin="0,0,0,8" Checked="SettingControl_AutoSave" Unchecked="SettingControl_AutoSave" />
-                                        <TextBlock Text="VirusTotal API Anahtarı (Opsiyonel Bulut Tarama):" Foreground="#A1A1AA" FontSize="11.5" Margin="0,2,0,4" />
-                                        <ui:TextBox PlaceholderText="VirusTotal v3 x-apikey (boşsa MalwareBazaar kullanılır)" Text="{Binding Settings.VirusTotalApiKey, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,8" LostFocus="SettingControl_AutoSave" />
+                                        <ui:ToggleSwitch Content="Temizlik &amp; Müdahale Öncesi Otomatik Geri Yükleme Noktası" IsChecked="{Binding Settings.EnableAutoRestorePoint}" Margin="0,0,0,7" Checked="SettingControl_AutoSave" Unchecked="SettingControl_AutoSave" />
+                                        <ui:ToggleSwitch Content="Sürücüsüz Güvenli Sensör Modu (WinRing0 / Defender uyarısı almamak için)" IsChecked="{Binding Settings.UseSafeDriverlessSensors}" Margin="0,0,0,8" Checked="SettingControl_AutoSave" Unchecked="SettingControl_AutoSave" />
+                                        <TextBlock Text="VirusTotal API Anahtarı (DPAPI Şifreli Saklanır):" Foreground="#A1A1AA" FontSize="11.5" Margin="0,2,0,3" />
+                                        <ui:TextBox PlaceholderText="VirusTotal v3 x-apikey" Text="{Binding Settings.VirusTotalApiKey, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,6" LostFocus="SettingControl_AutoSave" />
+                                        <TextBlock Text="MalwareBazaar Auth-Key (Opsiyonel ücretsiz abuse.ch anahtarı):" Foreground="#A1A1AA" FontSize="11.5" Margin="0,2,0,3" />
+                                        <ui:TextBox PlaceholderText="abuse.ch Auth-Key (DPAPI Şifreli)" Text="{Binding Settings.MalwareBazaarAuthKey, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,6" LostFocus="SettingControl_AutoSave" />
+                                        <TextBlock Text="Discord Webhook Alarm URL (Kritik tehditlerde telefona bildirim):" Foreground="#A1A1AA" FontSize="11.5" Margin="0,2,0,3" />
+                                        <Grid Margin="0,0,0,8">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <ui:TextBox Grid.Column="0" PlaceholderText="https://discord.com/api/webhooks/..." Text="{Binding Settings.DiscordWebhookUrl, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,6,0" LostFocus="SettingControl_AutoSave" />
+                                            <Button Grid.Column="1" Content="Test Et" Style="{StaticResource ShadcnSecondaryBtn}" Command="{Binding TestDiscordWebhookCommand}" />
+                                        </Grid>
                                         <TextBlock Text="Güvenilir Liste (Yoksayılan Öğeler):" Foreground="#A1A1AA" FontSize="11.5" Margin="0,2,0,4" />
                                         <ListBox ItemsSource="{Binding TrustedWhitelist}" MaxHeight="68" Background="#18181B" BorderBrush="#27272A" BorderThickness="1">
                                             <ListBox.ItemTemplate>
@@ -1823,17 +2082,18 @@
                                     </StackPanel>
                                 </Border>
 
-                                <!-- Card 6: Yedekleme & GitHub Güncelleme -->
+                                <!-- Card 6: Yedekleme, HTML Rapor & Tek Tıkla Otomatik Güncelleme -->
                                 <Border Background="#111113" CornerRadius="8" Padding="16" BorderBrush="#27272A" BorderThickness="1">
                                     <StackPanel>
                                         <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
                                             <Path Style="{StaticResource ShadcnIconPath}" Data="{StaticResource GeoRefresh}" Stroke="#4ADE80" Margin="0,0,8,0" />
-                                            <TextBlock Text="Yapılandırma Yedeği &amp; Sürüm Kontrolü" FontSize="14.5" FontWeight="SemiBold" Foreground="#FAFAFA" />
+                                            <TextBlock Text="Yedekleme, Rapor &amp; Otomatik Güncelleyici" FontSize="14.5" FontWeight="SemiBold" Foreground="#FAFAFA" />
                                         </StackPanel>
-                                        <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
-                                            <Button Content="Ayarları Dışa Aktar (JSON)" Style="{StaticResource ShadcnSecondaryBtn}" Margin="0,0,8,0" Click="ExportSettings_Click" />
-                                            <Button Content="Ayarları İçe Aktar" Style="{StaticResource ShadcnSecondaryBtn}" Click="ImportSettings_Click" />
-                                        </StackPanel>
+                                        <WrapPanel Orientation="Horizontal" Margin="0,0,0,10">
+                                            <Button Content="Ayarları Dışa Aktar" Style="{StaticResource ShadcnSecondaryBtn}" Margin="0,0,6,4" Click="ExportSettings_Click" />
+                                            <Button Content="Ayarları İçe Aktar" Style="{StaticResource ShadcnSecondaryBtn}" Margin="0,0,6,4" Click="ImportSettings_Click" />
+                                            <Button Content="HTML Sağlık Raporu" Style="{StaticResource ShadcnEmeraldBtn}" Margin="0,0,0,4" Click="ExportHtmlReport_Click" />
+                                        </WrapPanel>
                                         <TextBlock Text="GitHub Releases Deposu (owner/repo):" Foreground="#A1A1AA" FontSize="11.5" Margin="0,0,0,4" />
                                         <Grid Margin="0,0,0,8">
                                             <Grid.ColumnDefinitions>
@@ -1843,19 +2103,26 @@
                                             <ui:TextBox Grid.Column="0" Text="{Binding GitHubRepoSlug, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,8,0" />
                                             <Button Grid.Column="1" Content="Güncelleme Denetle" Style="{StaticResource ShadcnPrimaryBtn}" Command="{Binding CheckUpdateCommand}" />
                                         </Grid>
+                                        <ProgressBar Value="{Binding UpdateProgressPercent, Mode=OneWay}" Maximum="100" Height="5" Margin="0,0,0,6" Foreground="#4ADE80"
+                                                     Visibility="{Binding IsDownloadingUpdate, Converter={StaticResource BoolToVis}}" />
                                         <DockPanel>
                                             <TextBlock Text="{Binding UpdateStatusText}" Foreground="#D4D4D8" FontSize="11.5" VerticalAlignment="Center" TextWrapping="Wrap" />
-                                            <Button Content="İndir" Padding="10,4" DockPanel.Dock="Right" HorizontalAlignment="Right" Command="{Binding OpenUpdateUrlCommand}">
-                                                <Button.Style>
-                                                    <Style TargetType="Button" BasedOn="{StaticResource ShadcnEmeraldBtn}">
-                                                        <Style.Triggers>
-                                                            <DataTrigger Binding="{Binding UpdateUrl}" Value="">
-                                                                <Setter Property="Visibility" Value="Collapsed" />
-                                                            </DataTrigger>
-                                                        </Style.Triggers>
-                                                    </Style>
-                                                </Button.Style>
-                                            </Button>
+                                            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" HorizontalAlignment="Right">
+                                                <Button Content="Otomatik Güncelle" Style="{StaticResource ShadcnEmeraldBtn}" Padding="10,4" Margin="6,0,0,0"
+                                                        Visibility="{Binding HasAvailableUpdate, Converter={StaticResource BoolToVis}}"
+                                                        Command="{Binding InstallAvailableUpdateCommand}" />
+                                                <Button Content="GitHub'da Aç" Padding="10,4" Margin="6,0,0,0" Command="{Binding OpenUpdateUrlCommand}">
+                                                    <Button.Style>
+                                                        <Style TargetType="Button" BasedOn="{StaticResource ShadcnSecondaryBtn}">
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding UpdateUrl}" Value="">
+                                                                    <Setter Property="Visibility" Value="Collapsed" />
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </Button.Style>
+                                                </Button>
+                                            </StackPanel>
                                         </DockPanel>
                                     </StackPanel>
                                 </Border>
@@ -1946,6 +2213,7 @@
                                     <StackPanel Grid.Column="0" Margin="0,0,16,0">
                                         <TextBlock Text="Sistem Sınıfı &amp; Profil Puanları (Ref: %100 Modern Masaüstü)" FontSize="14.5" FontWeight="SemiBold" Foreground="#FAFAFA" />
                                         <TextBlock Text="{Binding LatestBenchmark.BottleneckNote}" Foreground="#A1A1AA" FontSize="12" Margin="0,3,0,0" TextWrapping="Wrap" />
+                                        <TextBlock Text="{Binding LatestBenchmark.ThermalSummary}" Foreground="#86EFAC" FontSize="11.5" FontWeight="SemiBold" Margin="0,4,0,0" TextWrapping="Wrap" />
                                     </StackPanel>
                                     <Border Grid.Column="1" Background="#052E16" BorderBrush="#166534" BorderThickness="1" CornerRadius="6"
                                             Padding="12,5" VerticalAlignment="Center" HorizontalAlignment="Right">
@@ -2012,51 +2280,59 @@
                         </Border>
 
                         <!-- Detailed Component Metrics -->
-                        <UniformGrid Columns="4" Margin="0,0,0,12"
+                        <UniformGrid Columns="5" Margin="0,0,0,12"
                                      Visibility="{Binding LatestBenchmark, Converter={StaticResource NotNullToVis}}">
-                            <Border Background="#111113" CornerRadius="8" Padding="16" Margin="0,0,6,0" BorderBrush="#27272A" BorderThickness="1">
+                            <Border Background="#111113" CornerRadius="8" Padding="14" Margin="0,0,5,0" BorderBrush="#27272A" BorderThickness="1">
                                 <StackPanel>
-                                    <TextBlock Text="CPU TEK ÇEKİRDEK" FontSize="10.5" FontWeight="SemiBold" Foreground="#A1A1AA" />
-                                    <TextBlock Text="{Binding LatestBenchmark.CpuSingleScore, StringFormat={}{0} Puan}" FontSize="23" FontWeight="Bold" Foreground="#FBBF24" Margin="0,6,0,6" />
+                                    <TextBlock Text="CPU TEK ÇEKİRDEK" FontSize="10" FontWeight="SemiBold" Foreground="#A1A1AA" />
+                                    <TextBlock Text="{Binding LatestBenchmark.CpuSingleScore, StringFormat={}{0} Puan}" FontSize="20" FontWeight="Bold" Foreground="#FBBF24" Margin="0,6,0,6" />
                                     <ProgressBar Value="{Binding LatestBenchmark.CpuSingleScore, Mode=OneWay}" Maximum="400" Height="4" Foreground="#FBBF24" Margin="0,0,0,6" />
-                                    <TextBlock Text="{Binding LatestBenchmark.CpuSingleMops, StringFormat=Hız: {0:F1} Mops/s}" FontSize="11.5" Foreground="#D4D4D8" />
+                                    <TextBlock Text="{Binding LatestBenchmark.CpuSingleMops, StringFormat=Hız: {0:F1} Mops/s}" FontSize="11" Foreground="#D4D4D8" />
                                 </StackPanel>
                             </Border>
 
-                            <Border Background="#111113" CornerRadius="8" Padding="16" Margin="3,0,3,0" BorderBrush="#27272A" BorderThickness="1">
+                            <Border Background="#111113" CornerRadius="8" Padding="14" Margin="3,0,3,0" BorderBrush="#27272A" BorderThickness="1">
                                 <StackPanel>
-                                    <TextBlock Text="CPU ÇOK ÇEKİRDEK" FontSize="10.5" FontWeight="SemiBold" Foreground="#A1A1AA" />
-                                    <TextBlock Text="{Binding LatestBenchmark.CpuMultiScore, StringFormat={}{0} Puan}" FontSize="23" FontWeight="Bold" Foreground="#F59E0B" Margin="0,6,0,6" />
+                                    <TextBlock Text="CPU ÇOK ÇEKİRDEK" FontSize="10" FontWeight="SemiBold" Foreground="#A1A1AA" />
+                                    <TextBlock Text="{Binding LatestBenchmark.CpuMultiScore, StringFormat={}{0} Puan}" FontSize="20" FontWeight="Bold" Foreground="#F59E0B" Margin="0,6,0,6" />
                                     <ProgressBar Value="{Binding LatestBenchmark.CpuMultiScore, Mode=OneWay}" Maximum="500" Height="4" Foreground="#F59E0B" Margin="0,0,0,6" />
-                                    <TextBlock FontSize="11.5" Foreground="#D4D4D8">
+                                    <TextBlock FontSize="11" Foreground="#D4D4D8">
                                         <Run Text="{Binding LatestBenchmark.CpuMultiMops, StringFormat={}{0:F1} Mops/s}" />
                                         <Run Text="{Binding LatestBenchmark.CpuScalingRatio, StringFormat= ({0:F1}x)}" Foreground="#A1A1AA" />
                                     </TextBlock>
                                 </StackPanel>
                             </Border>
 
-                            <Border Background="#111113" CornerRadius="8" Padding="16" Margin="3,0,3,0" BorderBrush="#27272A" BorderThickness="1">
+                            <Border Background="#111113" CornerRadius="8" Padding="14" Margin="3,0,3,0" BorderBrush="#27272A" BorderThickness="1">
                                 <StackPanel>
-                                    <TextBlock Text="RAM BELLEK" FontSize="10.5" FontWeight="SemiBold" Foreground="#A1A1AA" />
-                                    <TextBlock Text="{Binding LatestBenchmark.RamBandwidthGbPerSec, StringFormat={}{0:F1} GB/s}" FontSize="23" FontWeight="Bold" Foreground="#38BDF8" Margin="0,6,0,6" />
+                                    <TextBlock Text="RAM BELLEK" FontSize="10" FontWeight="SemiBold" Foreground="#A1A1AA" />
+                                    <TextBlock Text="{Binding LatestBenchmark.RamBandwidthGbPerSec, StringFormat={}{0:F1} GB/s}" FontSize="20" FontWeight="Bold" Foreground="#38BDF8" Margin="0,6,0,6" />
                                     <ProgressBar Value="{Binding LatestBenchmark.RamScore, Mode=OneWay}" Maximum="300" Height="4" Foreground="#38BDF8" Margin="0,0,0,6" />
-                                    <TextBlock FontSize="11.5" Foreground="#D4D4D8">
+                                    <TextBlock FontSize="11" Foreground="#D4D4D8">
                                         <Run Text="Gecikme: " /><Run Text="{Binding LatestBenchmark.RamLatencyNs, StringFormat={}{0:F1} ns}" />
-                                        <Run Text=" (" /><Run Text="{Binding LatestBenchmark.RamScore}" /><Run Text=" pt)" />
                                     </TextBlock>
                                 </StackPanel>
                             </Border>
 
-                            <Border Background="#111113" CornerRadius="8" Padding="16" Margin="6,0,0,0" BorderBrush="#27272A" BorderThickness="1">
+                            <Border Background="#111113" CornerRadius="8" Padding="14" Margin="3,0,3,0" BorderBrush="#27272A" BorderThickness="1">
                                 <StackPanel>
-                                    <TextBlock Text="DİSK / NVMe" FontSize="10.5" FontWeight="SemiBold" Foreground="#A1A1AA" />
-                                    <TextBlock FontSize="22" FontWeight="Bold" Foreground="#4ADE80" Margin="0,6,0,6">
-                                        <Run Text="{Binding LatestBenchmark.DiskSeqReadMbps, StringFormat={}{0:F0}}" /><Run Text=" MB/s" FontSize="13" />
+                                    <TextBlock Text="3D VEKTÖR / SIMD" FontSize="10" FontWeight="SemiBold" Foreground="#A1A1AA" />
+                                    <TextBlock Text="{Binding LatestBenchmark.GpuScore, StringFormat={}{0} Puan}" FontSize="20" FontWeight="Bold" Foreground="#C084FC" Margin="0,6,0,6" />
+                                    <ProgressBar Value="{Binding LatestBenchmark.GpuScore, Mode=OneWay}" Maximum="500" Height="4" Foreground="#C084FC" Margin="0,0,0,6" />
+                                    <TextBlock Text="{Binding LatestBenchmark.GpuThroughputMops, StringFormat={}{0:F1} Mvec/s}" FontSize="11" Foreground="#D4D4D8" />
+                                </StackPanel>
+                            </Border>
+
+                            <Border Background="#111113" CornerRadius="8" Padding="14" Margin="5,0,0,0" BorderBrush="#27272A" BorderThickness="1">
+                                <StackPanel>
+                                    <TextBlock Text="DİSK / NVMe" FontSize="10" FontWeight="SemiBold" Foreground="#A1A1AA" />
+                                    <TextBlock FontSize="20" FontWeight="Bold" Foreground="#4ADE80" Margin="0,6,0,6">
+                                        <Run Text="{Binding LatestBenchmark.DiskSeqReadMbps, StringFormat={}{0:F0}}" /><Run Text=" MB/s" FontSize="12" />
                                     </TextBlock>
                                     <ProgressBar Value="{Binding LatestBenchmark.DiskScore, Mode=OneWay}" Maximum="300" Height="4" Foreground="#4ADE80" Margin="0,0,0,6" />
-                                    <TextBlock FontSize="11" Foreground="#D4D4D8" TextTrimming="CharacterEllipsis">
+                                    <TextBlock FontSize="10.5" Foreground="#D4D4D8" TextTrimming="CharacterEllipsis">
                                         <Run Text="Y: " /><Run Text="{Binding LatestBenchmark.DiskSeqWriteMbps, StringFormat={}{0:F0}M}" />
-                                        <Run Text=" | 4K: " /><Run Text="{Binding LatestBenchmark.DiskRandom4kReadIops, StringFormat={}{0:N0} IOPS}" />
+                                        <Run Text=" | 4K: " /><Run Text="{Binding LatestBenchmark.DiskRandom4kReadIops, StringFormat={}{0:N0}}" />
                                     </TextBlock>
                                 </StackPanel>
                             </Border>
@@ -2188,6 +2464,7 @@
                                         <RadioButton Content="Klasör Ağacı (TreeSize)" Style="{StaticResource ShadcnSegmentedTab}" GroupName="DiskSub" Tag="0" IsChecked="True" Checked="DiskSubTab_Checked" />
                                         <RadioButton Content="En Büyük Dosyalar (Top 60)" Style="{StaticResource ShadcnSegmentedTab}" GroupName="DiskSub" Tag="1" Checked="DiskSubTab_Checked" />
                                         <RadioButton Content="Dosya Türü Dağılımı" Style="{StaticResource ShadcnSegmentedTab}" GroupName="DiskSub" Tag="2" Checked="DiskSubTab_Checked" />
+                                        <RadioButton Content="Yinelenen Dosyalar (Duplicate)" Style="{StaticResource ShadcnSegmentedTab}" GroupName="DiskSub" Tag="3" Checked="DiskSubTab_Checked" />
                                     </StackPanel>
                                 </Border>
 
@@ -2388,6 +2665,65 @@
                                 </ItemsControl.ItemTemplate>
                             </ItemsControl>
 
+                            <!-- Sub-Panel 3: SHA-256 Duplicate File Finder -->
+                            <Grid x:Name="PanelDiskDuplicates" Grid.Row="1" Visibility="Collapsed">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="*" />
+                                </Grid.RowDefinitions>
+                                <Border Grid.Row="0" Background="#18181B" CornerRadius="8" Padding="12" Margin="0,0,0,8" BorderBrush="#27272A" BorderThickness="1">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="{Binding DuplicateSummaryText}" Foreground="#D4D4D8" FontSize="12" VerticalAlignment="Center" TextWrapping="Wrap" Margin="0,0,12,0" />
+                                        <StackPanel Grid.Column="1" Orientation="Horizontal">
+                                            <Button Content="İptal" Style="{StaticResource ShadcnDangerBtn}" Margin="0,0,6,0"
+                                                    Visibility="{Binding IsFindingDuplicates, Converter={StaticResource BoolToVis}}"
+                                                    Command="{Binding CancelDuplicateScanCommand}" />
+                                            <Button Content="Yinelenen Dosyaları Ara (SHA-256)" Style="{StaticResource ShadcnPrimaryBtn}"
+                                                    Command="{Binding FindDuplicatesCommand}" />
+                                        </StackPanel>
+                                    </Grid>
+                                </Border>
+                                <DataGrid Grid.Row="1" ItemsSource="{Binding DuplicateGroups}"
+                                          AutoGenerateColumns="False" IsReadOnly="True" CanUserAddRows="False"
+                                          ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                                          Background="#09090B" Foreground="#E4E4E7" RowBackground="#111113" AlternatingRowBackground="#18181B"
+                                          GridLinesVisibility="Horizontal" HorizontalGridLinesBrush="#27272A" BorderBrush="#27272A" BorderThickness="1">
+                                    <DataGrid.Columns>
+                                        <DataGridTextColumn Header="Örnek Dosya" Binding="{Binding FileNameSample}" Width="200" />
+                                        <DataGridTextColumn Header="Tekil Boyut" Binding="{Binding FileSizeFormatted}" Width="95" />
+                                        <DataGridTextColumn Header="Kopya" Binding="{Binding CopyCount}" Width="62" />
+                                        <DataGridTemplateColumn Header="Kazanılabilir" Width="105">
+                                            <DataGridTemplateColumn.CellTemplate>
+                                                <DataTemplate>
+                                                    <TextBlock Text="{Binding WastedFormatted}" Foreground="#FBBF24" FontWeight="Bold" VerticalAlignment="Center" />
+                                                </DataTemplate>
+                                            </DataGridTemplateColumn.CellTemplate>
+                                        </DataGridTemplateColumn>
+                                        <DataGridTemplateColumn Header="Bulunan Konumlar" Width="*" MinWidth="220">
+                                            <DataGridTemplateColumn.CellTemplate>
+                                                <DataTemplate>
+                                                    <TextBlock Text="{Binding PathsPreview}" Foreground="#A1A1AA" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" ToolTip="{Binding PathsPreview}" />
+                                                </DataTemplate>
+                                            </DataGridTemplateColumn.CellTemplate>
+                                        </DataGridTemplateColumn>
+                                        <DataGridTemplateColumn Header="Temizlik" Width="175">
+                                            <DataGridTemplateColumn.CellTemplate>
+                                                <DataTemplate>
+                                                    <Button Content="Fazlalıkları Sil (Çöp)" Style="{StaticResource ShadcnDangerBtn}" Padding="8,3"
+                                                            ToolTip="En eski orijinali korur, diğer kopyaları Geri Dönüşüm Kutusuna taşır"
+                                                            Command="{Binding DataContext.RecycleDuplicateCopiesCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}"
+                                                            CommandParameter="{Binding}" />
+                                                </DataTemplate>
+                                            </DataGridTemplateColumn.CellTemplate>
+                                        </DataGridTemplateColumn>
+                                    </DataGrid.Columns>
+                                </DataGrid>
+                            </Grid>
+
                             <!-- Bottom Selected Path Bar -->
                             <Border Grid.Row="2" Background="#18181B" CornerRadius="6" Padding="10,6" Margin="0,10,0,0" BorderBrush="#27272A" BorderThickness="1"
                                     Visibility="{Binding SelectedDiskNode, Converter={StaticResource NotNullToVis}}">
@@ -2435,12 +2771,18 @@
         </Grid>
 
         <!-- Bottom Status Bar -->
-        <Border Grid.Row="2" Height="28" Background="#09090B" Padding="14,0" BorderBrush="#27272A" BorderThickness="0,1,0,0">
+        <Border Grid.Row="3" Height="28" Background="#09090B" Padding="14,0" BorderBrush="#27272A" BorderThickness="0,1,0,0">
             <DockPanel VerticalAlignment="Center">
                 <TextBlock Text="{Binding StatusBanner}" Foreground="#A1A1AA" FontSize="11.5" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
-                <ui:ProgressRing IsIndeterminate="True" Width="14" Height="14" DockPanel.Dock="Right" HorizontalAlignment="Right"
-                                 Visibility="{Binding IsBusy, Converter={StaticResource BoolToVis}}" />
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                    <TextBlock Text="Ctrl+K: Komut Paleti" Foreground="#52525B" FontSize="10.5" Margin="0,0,12,0" VerticalAlignment="Center" />
+                    <ui:ProgressRing IsIndeterminate="True" Width="14" Height="14"
+                                     Visibility="{Binding IsBusy, Converter={StaticResource BoolToVis}}" />
+                </StackPanel>
             </DockPanel>
         </Border>
+
+        <!-- Global Command Palette Overlay (Ctrl + K) -->
+        <views:CommandPaletteOverlay Grid.RowSpan="4" Panel.ZIndex="150" />
     </Grid>
 </ui:FluentWindow>

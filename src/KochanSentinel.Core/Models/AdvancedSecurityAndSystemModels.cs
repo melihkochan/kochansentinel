@@ -88,3 +88,63 @@ public sealed class SystemTweakItem
     public string StatusBadge => IsApplied ? "AKTİF (Optimize)" : "Varsayılan";
     public string ActionText => IsApplied ? "Varsayılana Döndür" : "Uygula";
 }
+
+public sealed class StartupAppItem
+{
+    public string Id { get; set; } = "";
+    public string Name { get; set; } = "";
+    public string Command { get; set; } = "";
+    public string ExecutablePath { get; set; } = "";
+    public string Source { get; set; } = ""; // HKCU Run, HKLM Run, Startup Klasörü, Görev Zamanlayıcı
+    public string RegistryHive { get; set; } = "";
+    public string RegistrySubKey { get; set; } = "";
+    public string ApprovedSubKey { get; set; } = "";
+    public bool IsEnabled { get; set; } = true;
+    public bool IsSigned { get; set; }
+    public string ImpactLevel { get; set; } = "Orta"; // Yüksek, Orta, Düşük
+    public string StatusText => IsEnabled ? "Aktif" : "Devre Dışı";
+    public string ToggleButtonText => IsEnabled ? "Devre Dışı Bırak" : "Etkinleştir";
+}
+
+public sealed class BootPerformanceInfo
+{
+    public double? LastBootSeconds { get; set; }
+    public double? MainPathSeconds { get; set; }
+    public double? PostBootSeconds { get; set; }
+    public DateTime? BootTime { get; set; }
+    public string SummaryText { get; set; } = "Önyükleme verisi okunamadı (Windows Diagnostics log kapalı olabilir).";
+}
+
+public sealed class DnsProfileItem
+{
+    public string Id { get; set; } = "";
+    public string Name { get; set; } = "";
+    public string Description { get; set; } = "";
+    public string PrimaryDns { get; set; } = "";
+    public string SecondaryDns { get; set; } = "";
+    public string DohTemplate { get; set; } = "";
+    public bool IsAutomatic { get; set; }
+    public string ServersLabel => IsAutomatic ? "Otomatik (DHCP / ISP)" : $"{PrimaryDns} / {SecondaryDns}";
+}
+
+public sealed class UpdateCheckResult
+{
+    public bool HasUpdate { get; set; }
+    public string CurrentVersion { get; set; } = "";
+    public string LatestVersion { get; set; } = "";
+    public string ReleaseName { get; set; } = "";
+    public string ReleaseNotes { get; set; } = "";
+    public string ReleaseUrl { get; set; } = "";
+    public string ExeDownloadUrl { get; set; } = "";
+    public string Sha256FileUrl { get; set; } = "";
+    public long ExeSizeBytes { get; set; }
+    public string Message { get; set; } = "";
+}
+
+public sealed class UpdateDownloadProgress
+{
+    public double Percent { get; set; }
+    public long BytesDownloaded { get; set; }
+    public long TotalBytes { get; set; }
+    public string StatusText { get; set; } = "";
+}

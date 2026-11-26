@@ -195,6 +195,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 if (ev.Severity >= FindingSeverity.High)
                 {
                     OnTrayNotificationRequested?.Invoke("KOCHAN Güvenlik Uyarısı!", ev.Message, true);
+                    DispatchWebhookIfConfigured(ev.Source, ev.Message, ev.Severity);
                 }
             });
         };
@@ -228,6 +229,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
                         AddHistoryEntry("Oto-Karantina (EDR)", qEntry.OriginalName, qEntry.OriginalPath, "Kritik Tehdit İzole Edildi", FindingSeverity.Critical);
                         ShowToast("Kritik Tehdit İzole Edildi", $"{qEntry.OriginalName} çalıştırılmadan AES-256 kasasına kilitlendi.", FindingSeverity.Critical);
                         OnTrayNotificationRequested?.Invoke("KOCHAN Aktif Koruma", $"{qEntry.OriginalName} otomatik karantinaya alındı!", true);
+                        DispatchWebhookIfConfigured("Otomatik EDR Karantinası", $"{qEntry.OriginalName} ({qEntry.OriginalPath}) otomatik karantinaya alındı.", FindingSeverity.Critical);
                         StatusBanner = qMsg;
                     }
                 }
@@ -243,8 +245,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 if (ev.Severity >= FindingSeverity.High)
                 {
                     AddHistoryEntry("Fidye Kalkanı", "Honeypot Tuzak Dosyası", ev.Message, "Müdahale Uygulandı", ev.Severity);
-                    ShowToast("Fidye Yazılımı Engellendi!", ev.Message, ev.Severity);
+                    ShowToast("Fidye Yazılımı Alarmı!", ev.Message, ev.Severity);
                     OnTrayNotificationRequested?.Invoke("KOCHAN Fidye Kalkanı!", ev.Message, true);
+                    DispatchWebhookIfConfigured("Fidye Yazılımı Honeypot Alarmı!", ev.Message, ev.Severity);
                 }
             });
         };
@@ -265,6 +268,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
         SyncRealtimeProtections();
         ReloadSystemTweaks();
+        InitializeModernFeatures();
 
         RefreshBenchmarkDrives();
         foreach (var b in _benchmark.LoadHistory())
@@ -354,6 +358,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
                         AddHistoryEntry("Canlı RAT Dedektörü", threat.Name, $"{threat.Location} | {threat.TargetPath}", threat.Reason, threat.Severity);
                         ShowToast("Aktif RAT / Şüpheli Ağ Alarmı", $"{threat.Name}: {threat.Location}", threat.Severity);
                         OnTrayNotificationRequested?.Invoke("KOCHAN Aktif RAT Uyarısı!", $"{threat.Name}: {threat.Reason}", true);
+                        DispatchWebhookIfConfigured("Canlı RAT / Şüpheli Ağ Alarmı", $"{threat.Name} -> {threat.Reason} ({threat.Location})", threat.Severity);
                     }
                 }
             }
@@ -382,7 +387,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             }
 
             _gameMode.IsAutoModeEnabled = Settings.AutoGameMode;
-            _gameMode.Tick(Settings);
+            _gameMode.Tick(Settings, _telemetry.LastProcessNamesSnapshot);
             UpdateGameModeUiState();
 
             if (Settings.AutoRamOptimizeOnHighUsage &&
@@ -464,9 +469,20 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 p.Category.Contains(q, StringComparison.OrdinalIgnoreCase));
         }
 
+        // Preserve user's selected process by PID across live 1.8s ticks!
+        int? selectedPid = SelectedProcess?.Pid;
+        var filtered = query.ToList();
+
         Processes.Clear();
-        foreach (var p in query)
+        ProcessItem? restoredSelection = null;
+        foreach (var p in filtered)
+        {
             Processes.Add(p);
+            if (selectedPid.HasValue && p.Pid == selectedPid.Value)
+                restoredSelection = p;
+        }
+        if (restoredSelection != null)
+            SelectedProcess = restoredSelection;
     }
 
     [RelayCommand]
@@ -780,7 +796,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         StatusBanner = $"Dosya derinlemesine taranıyor: {Path.GetFileName(path)}...";
         try
         {
-            var res = await _security.ScanFileAsync(path, Settings.VirusTotalApiKey);
+            var res = await _security.ScanFileAsync(path, Settings.VirusTotalApiKey, Settings.MalwareBazaarAuthKey);
             LastFileScan = res;
             StatusBanner = $"{res.FileName}: {res.Verdict}";
             AddSecurityEvent("Dosya Tarama", $"{res.FileName} -> {res.Verdict}", res.RiskLevel);
@@ -1384,8 +1400,13 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
     private void SyncRealtimeProtections()
     {
+        _telemetry.SetSafeDriverlessSensors(Settings.UseSafeDriverlessSensors);
+        _clipboardGuard.IsEnabled = Settings.EnableClipboardClipperGuard;
+        _canary.AutoKillMode = Settings.RansomwareAutoKillMode;
+        _security.UpdateApiKeys(Settings.VirusTotalApiKey, Settings.MalwareBazaarAuthKey);
+
         if (Settings.RealTimeDownloadsShield && !_security.IsRealTimeEnabled)
-            _security.StartRealTimeShield(Settings.VirusTotalApiKey);
+            _security.StartRealTimeShield(Settings.VirusTotalApiKey, Settings.MalwareBazaarAuthKey);
         else if (!Settings.RealTimeDownloadsShield && _security.IsRealTimeEnabled)
             _security.StopRealTimeShield();
         IsRealTimeShieldActive = _security.IsRealTimeEnabled;
@@ -1448,7 +1469,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 Metrics.GpuName,
                 Metrics.RamTotalGb,
                 progress,
-                _benchmarkCts.Token);
+                _benchmarkCts.Token,
+                () => _telemetry.ReadSensorsNow());
 
             LatestBenchmark = result;
             BenchmarkHistory.Insert(0, result);
@@ -1943,10 +1965,14 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private async Task CheckUpdateAsync()
     {
         UpdateStatusText = "GitHub sürümleri kontrol ediliyor...";
-        var (hasUpdate, _, url, msg) = await _tweaksRepair.CheckGitHubUpdateAsync(GitHubRepoSlug);
-        UpdateStatusText = msg;
-        UpdateUrl = url;
-        ShowToast("Sürüm Kontrolü", msg, hasUpdate ? FindingSeverity.Medium : FindingSeverity.Info);
+        var res = await _updater.CheckForUpdateAsync(GitHubRepoSlug);
+        AvailableUpdate = res;
+        HasAvailableUpdate = res.HasUpdate;
+        UpdateStatusText = res.Message;
+        UpdateUrl = res.ReleaseUrl;
+        if (res.HasUpdate)
+            UpdateBannerText = $"Yeni sürüm hazır: {res.LatestVersion} (Mevcut: v{res.CurrentVersion}) — Tek tıkla otomatik güncelleyebilirsin!";
+        ShowToast("Sürüm Kontrolü", res.Message, res.HasUpdate ? FindingSeverity.Medium : FindingSeverity.Info);
     }
 
     [RelayCommand]
@@ -1960,10 +1986,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
     {
         try
         {
-            var json = System.Text.Json.JsonSerializer.Serialize(Settings, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+            // Redact secret API keys / webhooks when exporting settings to share safely
+            var redacted = SettingsService.CreateRedactedExportCopy(Settings);
+            var json = System.Text.Json.JsonSerializer.Serialize(redacted, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
             File.WriteAllText(path, json);
-            StatusBanner = $"Ayarlar dışa aktarıldı: {Path.GetFileName(path)}";
-            ShowToast("Ayar Yedeği Oluşturuldu", path, FindingSeverity.Info);
+            StatusBanner = $"Ayarlar dışa aktarıldı (API anahtarları güvenlik için gizlendi): {Path.GetFileName(path)}";
+            ShowToast("Ayar Yedeği Oluşturuldu", "API anahtarları ve Webhook güvenliğiniz için dışa aktarımdan çıkarıldı.", FindingSeverity.Info);
         }
         catch (Exception ex)
         {
@@ -1994,6 +2022,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
     public void Dispose()
     {
+        _updateCts?.Cancel();
+        _dupCts?.Cancel();
         _repairCts?.Cancel();
         _diskScanCts?.Cancel();
         _benchmarkCts?.Cancel();

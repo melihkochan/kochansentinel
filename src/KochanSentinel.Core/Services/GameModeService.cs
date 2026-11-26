@@ -31,13 +31,14 @@ public sealed class GameModeService
     private readonly Dictionary<int, ProcessPriorityClass> _proBalancedPids = new();
     private readonly Dictionary<int, (TimeSpan Cpu, DateTime Time)> _pbPrevCpu = new();
     private int _boostedGamePid;
+    private bool _isManualBoost;
     private ProcessPriorityClass _previousGamePriority = ProcessPriorityClass.Normal;
     private bool _timerResolutionActive;
 
     private static readonly HashSet<string> ProBalanceProtected = new(StringComparer.OrdinalIgnoreCase)
     {
         "System", "Idle", "smss", "csrss", "wininit", "services", "lsass", "svchost",
-        "winlogon", "dwm", "explorer", "MsMpEng", "KochanSentinel.App", "audiodg", "Discord"
+        "winlogon", "dwm", "explorer", "MsMpEng", "KochanSentinel", "KochanSentinel.App", "audiodg", "Discord"
     };
 
     public bool IsAutoModeEnabled { get; set; } = true;
@@ -45,21 +46,33 @@ public sealed class GameModeService
     public string ActiveGameName { get; private set; } = "";
     public event Action<string, FindingSeverity>? OnStatusChanged;
 
-    public void Tick(AppSettings settings)
+    public void Tick(AppSettings settings, IReadOnlyList<(int Pid, string Name)>? processSnapshot = null)
     {
-        if (!IsAutoModeEnabled && !IsBoostActive)
-            return;
-
-        if (!IsAutoModeEnabled && IsBoostActive)
+        if (!IsAutoModeEnabled)
         {
-            DeactivateBoost();
+            if (IsBoostActive && !_isManualBoost)
+            {
+                DeactivateBoost();
+            }
+            else if (IsBoostActive && _isManualBoost && settings.EnableProBalance)
+            {
+                RunProBalanceTick();
+            }
             return;
         }
 
-        var detected = DetectRunningGame(settings.CustomGameExecutables);
+        if (_isManualBoost && IsBoostActive)
+        {
+            if (settings.EnableProBalance)
+                RunProBalanceTick();
+            return;
+        }
+
+        var detected = DetectRunningGame(settings.CustomGameExecutables, processSnapshot);
 
         if (detected != null && !IsBoostActive)
         {
+            _isManualBoost = false;
             ActivateBoost(detected.Value.Pid, detected.Value.Name, settings);
         }
         else if (detected == null && IsBoostActive)
@@ -79,6 +92,7 @@ public sealed class GameModeService
     public void ActivateManualBoost(AppSettings settings)
     {
         if (IsBoostActive) return;
+        _isManualBoost = true;
         ActivateBoost(0, "Manuel Oyun Modu", settings);
     }
 
@@ -145,6 +159,7 @@ public sealed class GameModeService
 
         var prevName = ActiveGameName;
         _boostedGamePid = 0;
+        _isManualBoost = false;
         ActiveGameName = "";
         IsBoostActive = false;
         OnStatusChanged?.Invoke($"Oyun Modu kapatıldı ({prevName}). Sistem ayarları geri yüklendi.", FindingSeverity.Info);
@@ -257,23 +272,34 @@ public sealed class GameModeService
         }
     }
 
-    private static (int Pid, string Name)? DetectRunningGame(List<string> customGames)
+    private static (int Pid, string Name)? DetectRunningGame(List<string> customGames, IReadOnlyList<(int Pid, string Name)>? processSnapshot = null)
     {
         var customSet = new HashSet<string>(
             customGames.Select(g => System.IO.Path.GetFileNameWithoutExtension(g)),
             StringComparer.OrdinalIgnoreCase);
 
-        foreach (var proc in Process.GetProcesses())
+        if (processSnapshot != null && processSnapshot.Count > 0)
         {
-            try
+            foreach (var p in processSnapshot)
             {
-                if (KnownGames.Contains(proc.ProcessName) || customSet.Contains(proc.ProcessName))
-                {
-                    return (proc.Id, proc.ProcessName);
-                }
+                if (KnownGames.Contains(p.Name) || customSet.Contains(p.Name))
+                    return (p.Pid, p.Name);
             }
-            catch { }
-            finally { proc.Dispose(); }
+        }
+        else
+        {
+            foreach (var proc in Process.GetProcesses())
+            {
+                try
+                {
+                    if (KnownGames.Contains(proc.ProcessName) || customSet.Contains(proc.ProcessName))
+                    {
+                        return (proc.Id, proc.ProcessName);
+                    }
+                }
+                catch { }
+                finally { proc.Dispose(); }
+            }
         }
 
         // Fallback: check if foreground window is D3D Exclusive Fullscreen

@@ -16,6 +16,7 @@ public sealed class FpsMonitorService : IDisposable
     private const string SessionName = "KochanSentinelFpsTrace";
     private static readonly Guid DxgiProviderGuid = new("CA11C036-0102-4A2D-A6AD-F03CFED5D3C9");
     private static readonly Guid D3D9ProviderGuid = new("783ACA0A-790E-4D7F-8451-AA850511C6B9");
+    private static readonly Guid DxgKrnlProviderGuid = new("802EC45A-1E99-4B83-9920-87C98277BA9D");
 
     private const uint WNODE_FLAG_TRACED_GUID = 0x00020000;
     private const uint EVENT_TRACE_REAL_TIME_MODE = 0x00000100;
@@ -239,8 +240,11 @@ public sealed class FpsMonitorService : IDisposable
 
             var dxgi = DxgiProviderGuid;
             var d3d9 = D3D9ProviderGuid;
+            var dxgkrnl = DxgKrnlProviderGuid;
             EnableTraceEx2(_sessionHandle, ref dxgi, EVENT_CONTROL_CODE_ENABLE_PROVIDER, TRACE_LEVEL_INFORMATION, 0xFFFFFFFFFFFFFFFF, 0, 0, IntPtr.Zero);
             EnableTraceEx2(_sessionHandle, ref d3d9, EVENT_CONTROL_CODE_ENABLE_PROVIDER, TRACE_LEVEL_INFORMATION, 0xFFFFFFFFFFFFFFFF, 0, 0, IntPtr.Zero);
+            // DxgKrnl Present keyword (0x0000000000000001 = Base/Present for Vulkan/OpenGL/D3D12 flip coverage)
+            EnableTraceEx2(_sessionHandle, ref dxgkrnl, EVENT_CONTROL_CODE_ENABLE_PROVIDER, TRACE_LEVEL_INFORMATION, 0x1, 0, 0, IntPtr.Zero);
 
             _loggerNamePtr = Marshal.StringToHGlobalUni(SessionName);
             _callbackKeepAlive = OnEventRecord;
@@ -292,7 +296,8 @@ public sealed class FpsMonitorService : IDisposable
 
             bool isPresent =
                 (provider == DxgiProviderGuid && eventId == 42) ||
-                (provider == D3D9ProviderGuid && eventId == 1);
+                (provider == D3D9ProviderGuid && eventId == 1) ||
+                (provider == DxgKrnlProviderGuid && eventId == 184);
 
             if (!isPresent) return;
 
@@ -371,6 +376,14 @@ public sealed class FpsMonitorService : IDisposable
             catch { }
             _traceHandle = ulong.MaxValue;
         }
+        // Wait for ProcessTrace thread to finish unwinding before freeing native structs (prevents AccessViolation)
+        try
+        {
+            if (_traceThread != null && _traceThread.IsAlive && Thread.CurrentThread != _traceThread)
+                _traceThread.Join(1200);
+        }
+        catch { }
+
         if (_propsPtr != IntPtr.Zero)
         {
             Marshal.FreeHGlobal(_propsPtr);

@@ -5,6 +5,8 @@ using System.Text.Json;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Input;
+using System.Windows.Interop;
+using KochanSentinel.Core.Interop;
 using KochanSentinel.Core.Models;
 
 namespace KochanSentinel.App;
@@ -71,6 +73,30 @@ public partial class MiniMonitorWindow : Window
         catch { }
     }
 
+    private bool _clickThroughEnabled;
+
+    protected override void OnSourceInitialized(EventArgs e)
+    {
+        base.OnSourceInitialized(e);
+        ApplyClickThroughStyle();
+    }
+
+    private void ApplyClickThroughStyle()
+    {
+        try
+        {
+            var hwnd = new WindowInteropHelper(this).Handle;
+            if (hwnd == IntPtr.Zero) return;
+            int exStyle = NativeMethods.GetWindowLong(hwnd, NativeMethods.GWL_EXSTYLE);
+            if (_clickThroughEnabled)
+                exStyle |= NativeMethods.WS_EX_TRANSPARENT | NativeMethods.WS_EX_LAYERED | NativeMethods.WS_EX_TOOLWINDOW;
+            else
+                exStyle = (exStyle & ~NativeMethods.WS_EX_TRANSPARENT) | NativeMethods.WS_EX_TOOLWINDOW;
+            NativeMethods.SetWindowLong(hwnd, NativeMethods.GWL_EXSTYLE, exStyle);
+        }
+        catch { }
+    }
+
     public void ApplyPreferences(AppSettings settings)
     {
         PanelHudCpu.Visibility = settings.HudShowCpu ? Visibility.Visible : Visibility.Collapsed;
@@ -79,7 +105,21 @@ public partial class MiniMonitorWindow : Window
         PanelHudFps.Visibility = settings.HudShowFps ? Visibility.Visible : Visibility.Collapsed;
         PanelHudNet.Visibility = settings.HudShowNet ? Visibility.Visible : Visibility.Collapsed;
         PanelHudPing.Visibility = settings.HudShowPing ? Visibility.Visible : Visibility.Collapsed;
-        HudRootBorder.Opacity = Math.Clamp(settings.HudOpacity, 0.45, 1.0);
+        HudRootBorder.Opacity = Math.Clamp(settings.HudOpacity, 0.35, 1.0);
+
+        // Compact gaming mode hides sparklines & tightens padding
+        SparkCpu.Visibility = settings.HudCompactMode ? Visibility.Collapsed : Visibility.Visible;
+        SparkRam.Visibility = settings.HudCompactMode ? Visibility.Collapsed : Visibility.Visible;
+        HudRootBorder.Padding = settings.HudCompactMode ? new Thickness(7, 4, 7, 4) : new Thickness(10, 6, 10, 6);
+
+        // Click-Through gaming overlay mode (mouse clicks pass right through to the game!)
+        _clickThroughEnabled = settings.HudClickThrough;
+        BtnBoost.Visibility = _clickThroughEnabled ? Visibility.Collapsed : Visibility.Visible;
+        ApplyClickThroughStyle();
+
+        HudRootBorder.ToolTip = _clickThroughEnabled
+            ? $"{settings.HudHotkeyPreset} ile gizle/aç • Oyun İçi Tıklama Geçirgenliği Aktif"
+            : $"{settings.HudHotkeyPreset} ile aç/kapat • Sürükleyerek taşı • Çift tıkla: Ana Pencere";
     }
 
     public void UpdateMetrics(SystemMetrics m)

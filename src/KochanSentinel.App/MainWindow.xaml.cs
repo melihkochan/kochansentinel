@@ -1,53 +1,40 @@
 using System;
-using System.Collections.Generic;
 using System.ComponentModel;
 using System.Drawing;
-using System.Drawing.Drawing2D;
-using System.Drawing.Text;
-using System.Linq;
-using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Forms;
+using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
 using KochanSentinel.App.ViewModels;
-using KochanSentinel.Core.Services;
+using KochanSentinel.Core.Interop;
 using Wpf.Ui.Controls;
 
 namespace KochanSentinel.App;
 
 public partial class MainWindow : FluentWindow
 {
-    [DllImport("user32.dll", SetLastError = true)]
-    private static extern bool DestroyIcon(IntPtr hIcon);
-
-    [DllImport("user32.dll", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool RegisterHotKey(IntPtr hWnd, int id, uint fsModifiers, uint vk);
-
-    [DllImport("user32.dll", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool UnregisterHotKey(IntPtr hWnd, int id);
-
     private const int HotkeyId = 9001;
-    private const int WmHotkey = 0x0312;
 
     private readonly MainViewModel _vm;
     private readonly NotifyIcon _trayIcon;
     private readonly MiniMonitorWindow _miniHud;
     private HwndSource? _hwndSource;
+    private bool _hwndHooksAttached;
+    private bool _clipboardListenerAttached;
     private bool _isExplicitExit;
     private bool _uiInitialized;
 
     public bool IsSelfDefenseEnabled => _vm.Settings.EnableSelfDefenseWatchdog;
 
-    public MainWindow(bool startMinimized = false)
+    public MainWindow(bool startMinimized = false, bool justUpdated = false)
     {
         InitializeComponent();
         _vm = new MainViewModel();
         DataContext = _vm;
         _uiInitialized = true;
+
         if (DiskTreemap != null)
             DiskTreemap.NodeDoubleClicked += async node => await _vm.DrillIntoDiskNodeCommand.ExecuteAsync(node);
         SwitchTab(0);
@@ -57,12 +44,26 @@ public partial class MainWindow : FluentWindow
         _miniHud.ApplyPreferences(_vm.Settings);
         _miniHud.OnOpenMainRequested += RestoreWindow;
         _miniHud.OnBoostAsyncRequested += async () => await _vm.QuickBoostWithSummaryAsync();
+
         _vm.OnMetricsUpdated += m => _miniHud.UpdateMetrics(m);
+        _vm.OnNavigateTabRequested += NavigateToTab;
+        _vm.OnToggleMiniHudRequested += () => ToggleMiniHud_Click(this, new RoutedEventArgs());
+        _vm.OnExportHtmlReportDialogRequested += () => ExportHtmlReport_Click(this, new RoutedEventArgs());
+        _vm.OnBeforeSelfUpdateShutdownRequested += () =>
+        {
+            _isExplicitExit = true;
+            (System.Windows.Application.Current as App)?.PrepareForSelfUpdate();
+        };
+
         _vm.OnSettingsSynced += () =>
         {
             _miniHud.ApplyPreferences(_vm.Settings);
+            ApplyGlobalHotkey(_vm.Settings.HudHotkeyPreset);
+            ApplyWindowBackdrop(_vm.Settings.WindowBackdropMode);
             (System.Windows.Application.Current as App)?.SyncWatchdogState(_vm.Settings.EnableSelfDefenseWatchdog);
         };
+
+        ApplyWindowBackdrop(_vm.Settings.WindowBackdropMode);
 
         if (_vm.Settings.ShowMiniHudOnStart)
             _miniHud.Show();
@@ -72,30 +73,117 @@ public partial class MainWindow : FluentWindow
             _trayIcon.ShowBalloonTip(4000, title, msg, isWarning ? ToolTipIcon.Warning : ToolTipIcon.Info);
         };
 
+        // Ensure Win32 HWND exists even when started --minimized so Global Hotkey & Clipboard Guard work immediately!
         if (startMinimized)
         {
+            EnsureHwndAndHooks();
             Hide();
+        }
+
+        if (justUpdated)
+        {
+            Dispatcher.BeginInvoke(() => _vm.NotifyJustUpdated());
         }
     }
 
     protected override void OnSourceInitialized(EventArgs e)
     {
         base.OnSourceInitialized(e);
-        var helper = new WindowInteropHelper(this);
-        _hwndSource = HwndSource.FromHwnd(helper.Handle);
-        _hwndSource?.AddHook(HwndHook);
-        // Alt + Z global hotkey (MOD_ALT=0x0001 | MOD_NOREPEAT=0x4000, VK_Z=0x5A)
-        RegisterHotKey(helper.Handle, HotkeyId, 0x0001 | 0x4000, 0x5A);
+        EnsureHwndAndHooks();
+    }
+
+    private void EnsureHwndAndHooks()
+    {
+        if (_hwndHooksAttached) return;
+        try
+        {
+            var helper = new WindowInteropHelper(this);
+            IntPtr handle = helper.EnsureHandle();
+            _hwndSource = HwndSource.FromHwnd(handle);
+            _hwndSource?.AddHook(HwndHook);
+            _hwndHooksAttached = true;
+
+            ApplyGlobalHotkey(_vm.Settings.HudHotkeyPreset);
+            _clipboardListenerAttached = NativeMethods.AddClipboardFormatListener(handle);
+        }
+        catch { }
+    }
+
+    private void ApplyGlobalHotkey(string? preset)
+    {
+        if (_hwndSource == null) return;
+        try
+        {
+            NativeMethods.UnregisterHotKey(_hwndSource.Handle, HotkeyId);
+
+            (uint mods, uint vk) = (preset ?? "Ctrl+Shift+H") switch
+            {
+                "Alt+Z" => (NativeMethods.MOD_ALT | NativeMethods.MOD_NOREPEAT, NativeMethods.VK_Z),
+                "Ctrl+Alt+H" => (NativeMethods.MOD_CONTROL | NativeMethods.MOD_ALT | NativeMethods.MOD_NOREPEAT, NativeMethods.VK_H),
+                "F9" => (NativeMethods.MOD_NOREPEAT, NativeMethods.VK_F9),
+                _ => (NativeMethods.MOD_CONTROL | NativeMethods.MOD_SHIFT | NativeMethods.MOD_NOREPEAT, NativeMethods.VK_H)
+            };
+
+            NativeMethods.RegisterHotKey(_hwndSource.Handle, HotkeyId, mods, vk);
+        }
+        catch { }
+    }
+
+    private void ApplyWindowBackdrop(string? mode)
+    {
+        try
+        {
+            WindowBackdropType = (mode ?? "None") switch
+            {
+                "Mica" => WindowBackdropType.Mica,
+                "Acrylic" => WindowBackdropType.Acrylic,
+                _ => WindowBackdropType.None
+            };
+        }
+        catch { }
     }
 
     private IntPtr HwndHook(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
     {
-        if (msg == WmHotkey && wParam.ToInt32() == HotkeyId)
+        if (msg == NativeMethods.WM_HOTKEY && wParam.ToInt32() == HotkeyId)
         {
             ToggleMiniHud_Click(this, new RoutedEventArgs());
             handled = true;
         }
+        else if (msg == NativeMethods.WM_CLIPBOARDUPDATE && _vm.Settings.EnableClipboardClipperGuard)
+        {
+            try
+            {
+                if (System.Windows.Clipboard.ContainsText())
+                {
+                    string clipText = System.Windows.Clipboard.GetText();
+                    var (shouldRestore, safeText) = _vm.HandleClipboardTextChanged(clipText);
+                    if (shouldRestore && !string.IsNullOrEmpty(safeText))
+                    {
+                        System.Windows.Clipboard.SetText(safeText);
+                    }
+                }
+            }
+            catch { }
+        }
         return IntPtr.Zero;
+    }
+
+    private void Window_PreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+    {
+        if (e.Key == Key.K && (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control)
+        {
+            if (_vm.IsCommandPaletteOpen)
+                _vm.CloseCommandPaletteCommand.Execute(null);
+            else
+                _vm.OpenCommandPaletteCommand.Execute(null);
+            e.Handled = true;
+        }
+        else if (e.Key == Key.Escape && _vm.IsCommandPaletteOpen)
+        {
+            _vm.CloseCommandPaletteCommand.Execute(null);
+            e.Handled = true;
+        }
     }
 
     private void ToggleMiniHud_Click(object sender, RoutedEventArgs e)
@@ -106,6 +194,23 @@ public partial class MainWindow : FluentWindow
             _miniHud.Show();
     }
 
+    private void NavigateToTab(int idx)
+    {
+        switch (idx)
+        {
+            case 0: NavRadioDashboard.IsChecked = true; break;
+            case 1: NavRadioMonitor.IsChecked = true; break;
+            case 2: NavRadioCleaner.IsChecked = true; break;
+            case 3: NavRadioGames.IsChecked = true; break;
+            case 4: NavRadioSecurity.IsChecked = true; break;
+            case 5: NavRadioSettings.IsChecked = true; break;
+            case 6: NavRadioBenchmark.IsChecked = true; break;
+            case 7: NavRadioDisk.IsChecked = true; break;
+        }
+        _vm.SelectedNavIndex = idx;
+        SwitchTab(idx);
+    }
+
     private NotifyIcon CreateTrayIcon()
     {
         var menu = new ContextMenuStrip();
@@ -113,6 +218,8 @@ public partial class MainWindow : FluentWindow
         menu.Items.Add("📌 Mini Monitör (HUD) Aç/Kapat", null, (_, _) => ToggleMiniHud_Click(this, new RoutedEventArgs()));
         menu.Items.Add("⚡ Hızlı Optimize Et", null, async (_, _) => await _vm.QuickBoostCommand.ExecuteAsync(null));
         menu.Items.Add("🎮 Manuel Oyun Modu", null, (_, _) => _vm.ToggleManualGameModeCommand.Execute(null));
+        menu.Items.Add("📄 HTML Sağlık Raporu Oluştur", null, (_, _) => { RestoreWindow(); ExportHtmlReport_Click(this, new RoutedEventArgs()); });
+        menu.Items.Add("🔄 Güncelleme Denetle", null, async (_, _) => await _vm.CheckUpdateCommand.ExecuteAsync(null));
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("Çıkış", null, (_, _) =>
         {
@@ -152,14 +259,12 @@ public partial class MainWindow : FluentWindow
         }
     }
 
-    private void TelemetryCard_Click(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    private void TelemetryCard_Click(object sender, MouseButtonEventArgs e)
     {
         if (sender is FrameworkElement fe && fe.Tag is string mode)
         {
             _vm.SetProcessSortModeCommand.Execute(mode);
-            NavRadioMonitor.IsChecked = true;
-            _vm.SelectedNavIndex = 1;
-            SwitchTab(1);
+            NavigateToTab(1);
         }
     }
 
@@ -167,19 +272,23 @@ public partial class MainWindow : FluentWindow
     {
         if (sender is System.Windows.Controls.RadioButton rb &&
             int.TryParse(rb.Tag?.ToString(), out int subIdx) &&
-            PanelProcTable != null && PanelNetShield != null && PanelFirewallRules != null && PanelDnsCache != null)
+            PanelProcTable != null && PanelNetShield != null && PanelFirewallRules != null && PanelDnsCache != null && PanelDnsSwitcher != null)
         {
             PanelProcTable.Visibility = subIdx == 0 ? Visibility.Visible : Visibility.Collapsed;
             PanelNetShield.Visibility = subIdx == 1 ? Visibility.Visible : Visibility.Collapsed;
             PanelFirewallRules.Visibility = subIdx == 2 ? Visibility.Visible : Visibility.Collapsed;
             PanelDnsCache.Visibility = subIdx == 3 ? Visibility.Visible : Visibility.Collapsed;
-            if (BtnRefreshNetShield != null)
-                BtnRefreshNetShield.Visibility = subIdx > 0 ? Visibility.Visible : Visibility.Collapsed;
-            if (NetShieldSummaryBar != null)
-                NetShieldSummaryBar.Visibility = subIdx > 0 ? Visibility.Visible : Visibility.Collapsed;
+            PanelDnsSwitcher.Visibility = subIdx == 4 ? Visibility.Visible : Visibility.Collapsed;
 
-            if (subIdx > 0 && _vm.ExternalConnections.Count == 0 && _vm.BlockedFirewallRules.Count == 0)
+            if (BtnRefreshNetShield != null)
+                BtnRefreshNetShield.Visibility = subIdx is > 0 and < 4 ? Visibility.Visible : Visibility.Collapsed;
+            if (NetShieldSummaryBar != null)
+                NetShieldSummaryBar.Visibility = subIdx is > 0 and < 4 ? Visibility.Visible : Visibility.Collapsed;
+
+            if (subIdx is > 0 and < 4 && _vm.ExternalConnections.Count == 0 && _vm.BlockedFirewallRules.Count == 0)
                 _ = _vm.ScanNetworkShieldCommand.ExecuteAsync(null);
+            else if (subIdx == 4)
+                _vm.RefreshDnsAdaptersCommand.Execute(null);
         }
     }
 
@@ -187,10 +296,14 @@ public partial class MainWindow : FluentWindow
     {
         if (sender is System.Windows.Controls.RadioButton rb &&
             int.TryParse(rb.Tag?.ToString(), out int subIdx) &&
-            PanelCleanerMain != null && PanelTweaksAndRepair != null)
+            PanelCleanerMain != null && PanelTweaksAndRepair != null && PanelStartupManager != null)
         {
             PanelCleanerMain.Visibility = subIdx == 0 ? Visibility.Visible : Visibility.Collapsed;
             PanelTweaksAndRepair.Visibility = subIdx == 1 ? Visibility.Visible : Visibility.Collapsed;
+            PanelStartupManager.Visibility = subIdx == 2 ? Visibility.Visible : Visibility.Collapsed;
+
+            if (subIdx == 2 && _vm.StartupApps.Count == 0)
+                _ = _vm.ScanStartupAppsCommand.ExecuteAsync(null);
         }
     }
 
@@ -229,12 +342,10 @@ public partial class MainWindow : FluentWindow
     private void SelectAllFindings_Click(object sender, RoutedEventArgs e)
     {
         if (sender is System.Windows.Controls.CheckBox cb)
-        {
             _vm.SelectAllFindings = cb.IsChecked == true;
-        }
     }
 
-    private void PanelHistory_MouseDoubleClick(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    private void PanelHistory_MouseDoubleClick(object sender, MouseButtonEventArgs e)
     {
         if (PanelHistory.SelectedItem is KochanSentinel.Core.Models.SecurityHistoryEntry entry)
         {
@@ -308,11 +419,12 @@ public partial class MainWindow : FluentWindow
     {
         if (sender is System.Windows.Controls.RadioButton rb &&
             int.TryParse(rb.Tag?.ToString(), out int subIdx) &&
-            PanelDiskTree != null && PanelDiskTopFiles != null && PanelDiskTypes != null)
+            PanelDiskTree != null && PanelDiskTopFiles != null && PanelDiskTypes != null && PanelDiskDuplicates != null)
         {
             PanelDiskTree.Visibility = subIdx == 0 ? Visibility.Visible : Visibility.Collapsed;
             PanelDiskTopFiles.Visibility = subIdx == 1 ? Visibility.Visible : Visibility.Collapsed;
             PanelDiskTypes.Visibility = subIdx == 2 ? Visibility.Visible : Visibility.Collapsed;
+            PanelDiskDuplicates.Visibility = subIdx == 3 ? Visibility.Visible : Visibility.Collapsed;
         }
     }
 
@@ -324,14 +436,14 @@ public partial class MainWindow : FluentWindow
 
     private async void BrowseDiskFolder_Click(object sender, RoutedEventArgs e)
     {
-        using var dlg = new FolderBrowserDialog
+        // Native modern .NET 8 WPF OpenFolderDialog (replaces legacy WinForms FolderBrowserDialog)
+        var dlg = new Microsoft.Win32.OpenFolderDialog
         {
-            Description = "Boyut analizi yapılacak klasörü seçin (TreeSize Görünümü)",
-            UseDescriptionForTitle = true
+            Title = "Boyut analizi yapılacak klasörü seçin (TreeSize Görünümü)"
         };
-        if (dlg.ShowDialog() == System.Windows.Forms.DialogResult.OK && !string.IsNullOrWhiteSpace(dlg.SelectedPath))
+        if (dlg.ShowDialog() == true && !string.IsNullOrWhiteSpace(dlg.FolderName))
         {
-            await _vm.RunDiskAnalysisCommand.ExecuteAsync(dlg.SelectedPath);
+            await _vm.RunDiskAnalysisCommand.ExecuteAsync(dlg.FolderName);
         }
     }
 
@@ -343,9 +455,7 @@ public partial class MainWindow : FluentWindow
             Filter = "Tüm Dosyalar (*.*)|*.*|Çalıştırılabilir (*.exe;*.dll;*.msi;*.bat;*.ps1)|*.exe;*.dll;*.msi;*.bat;*.ps1"
         };
         if (dlg.ShowDialog() == true)
-        {
             await _vm.ScanFileCommand.ExecuteAsync(dlg.FileName);
-        }
     }
 
     private async void FileScanner_Drop(object sender, System.Windows.DragEventArgs e)
@@ -354,15 +464,19 @@ public partial class MainWindow : FluentWindow
         {
             var files = (string[])e.Data.GetData(System.Windows.DataFormats.FileDrop);
             if (files is { Length: > 0 })
-            {
                 await _vm.ScanFileCommand.ExecuteAsync(files[0]);
-            }
         }
     }
 
     private void SettingControl_AutoSave(object sender, RoutedEventArgs e)
     {
         if (_uiInitialized)
+            _vm.SaveSettingsCommand.Execute(null);
+    }
+
+    private void SettingCombo_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
+    {
+        if (_uiInitialized && _vm != null)
             _vm.SaveSettingsCommand.Execute(null);
     }
 
@@ -395,6 +509,18 @@ public partial class MainWindow : FluentWindow
             _vm.ImportSettingsFromPath(dlg.FileName);
     }
 
+    private void ExportHtmlReport_Click(object sender, RoutedEventArgs e)
+    {
+        var dlg = new Microsoft.Win32.SaveFileDialog
+        {
+            Title = "KOCHAN Sistem Sağlık & Güvenlik Raporunu Kaydet",
+            FileName = $"KOCHAN-Rapor-{Environment.MachineName}-{DateTime.Now:yyyyMMdd-HHmm}.html",
+            Filter = "HTML Raporu (*.html)|*.html"
+        };
+        if (dlg.ShowDialog() == true)
+            _vm.ExportHtmlReportToPath(dlg.FileName);
+    }
+
     private void MainWindow_Closing(object? sender, CancelEventArgs e)
     {
         if (!_isExplicitExit && _vm.Settings.MinimizeToTrayOnClose)
@@ -409,27 +535,14 @@ public partial class MainWindow : FluentWindow
 
         if (_hwndSource != null)
         {
-            UnregisterHotKey(_hwndSource.Handle, HotkeyId);
+            NativeMethods.UnregisterHotKey(_hwndSource.Handle, HotkeyId);
+            if (_clipboardListenerAttached)
+                NativeMethods.RemoveClipboardFormatListener(_hwndSource.Handle);
             _hwndSource.RemoveHook(HwndHook);
         }
         _trayIcon.Visible = false;
         _trayIcon.Dispose();
         _miniHud.Close();
         _vm.Dispose();
-    }
-}
-
-internal static class GraphicsExtensions
-{
-    public static void DrawRoundedRectangleCompat(this Graphics g, System.Drawing.Pen pen, int x, int y, int w, int h, int r)
-    {
-        using var path = new GraphicsPath();
-        int d = r * 2;
-        path.AddArc(x, y, d, d, 180, 90);
-        path.AddArc(x + w - d, y, d, d, 270, 90);
-        path.AddArc(x + w - d, y + h - d, d, d, 0, 90);
-        path.AddArc(x, y + h - d, d, d, 90, 90);
-        path.CloseFigure();
-        g.DrawPath(pen, path);
     }
 }

@@ -27,7 +27,8 @@ public sealed class BenchmarkService
         string gpuName,
         double totalRamGb,
         IProgress<BenchmarkProgress>? progress = null,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        Func<SensorSnapshot?>? readSensors = null)
     {
         return await Task.Run(() =>
         {
@@ -39,73 +40,134 @@ public sealed class BenchmarkService
                 TargetDrive = string.IsNullOrWhiteSpace(targetDrive) ? @"C:\" : targetDrive
             };
 
-            // Stage 1: CPU Single-Core
-            progress?.Report(new BenchmarkProgress
+            double? peakCpuTemp = null;
+            double? peakGpuTemp = null;
+            void SampleThermal()
             {
-                StageName = "1/4 • CPU Tek Çekirdek Testi",
-                Detail = "SHA-256 + Kayan Nokta & Bit İşlem hızı ölçülüyor...",
-                PercentComplete = 12
-            });
-            double singleMops = RunCpuSingleCore(ct);
-            result.CpuSingleMops = Math.Round(singleMops, 1);
-            // Reference 100 pts ~ midrange 3.6GHz desktop core (~295 Mops/s -> avoids hitting artificial ceilings on modern CPUs)
-            result.CpuSingleScore = Math.Clamp((int)Math.Round((singleMops / 295.0) * 100.0), 10, 1000);
+                try
+                {
+                    var s = readSensors?.Invoke();
+                    if (s == null) return;
+                    if (s.CpuTemp.HasValue && (!peakCpuTemp.HasValue || s.CpuTemp.Value > peakCpuTemp.Value))
+                        peakCpuTemp = s.CpuTemp.Value;
+                    if (s.GpuTemp.HasValue && (!peakGpuTemp.HasValue || s.GpuTemp.Value > peakGpuTemp.Value))
+                        peakGpuTemp = s.GpuTemp.Value;
+                }
+                catch { }
+            }
 
-            // Stage 2: CPU Multi-Core
-            ct.ThrowIfCancellationRequested();
-            progress?.Report(new BenchmarkProgress
+            using var thermalCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            var thermalTask = Task.Run(async () =>
             {
-                StageName = $"2/4 • CPU Çok Çekirdek Testi ({Environment.ProcessorCount} Thread)",
-                Detail = "Tüm mantıksal çekirdekler paralel stres altında ölçülüyor...",
-                PercentComplete = 38
+                while (!thermalCts.IsCancellationRequested)
+                {
+                    SampleThermal();
+                    try { await Task.Delay(450, thermalCts.Token); } catch { break; }
+                }
             });
-            double multiMops = RunCpuMultiCore(ct);
-            result.CpuMultiMops = Math.Round(multiMops, 1);
-            result.CpuScalingRatio = singleMops > 0.1 ? Math.Round(multiMops / singleMops, 1) : 1.0;
-            // Reference 100 pts ~ 6c desktop (~1450 Mops/s)
-            result.CpuMultiScore = Math.Clamp((int)Math.Round((multiMops / 1450.0) * 100.0), 10, 1500);
 
-            // Stage 3: RAM Bandwidth & Latency
-            ct.ThrowIfCancellationRequested();
-            progress?.Report(new BenchmarkProgress
+            try
             {
-                StageName = "3/4 • RAM Bant Genişliği & Gecikme Testi",
-                Detail = "192 MB sıralı transfer (GB/s) ve 64 MB L3-üstü gecikme (ns) ölçülüyor...",
-                PercentComplete = 65
-            });
-            var (ramGbps, ramNs) = RunMemoryBenchmark(ct);
-            result.RamBandwidthGbPerSec = Math.Round(ramGbps, 1);
-            result.RamLatencyNs = Math.Round(ramNs, 1);
+                // Stage 1: CPU Single-Core
+                progress?.Report(new BenchmarkProgress
+                {
+                    StageName = "1/5 • CPU Tek Çekirdek Testi",
+                    Detail = "SHA-256 + Kayan Nokta & Bit İşlem hızı ölçülüyor...",
+                    PercentComplete = 12
+                });
+                double singleMops = RunCpuSingleCore(ct);
+                result.CpuSingleMops = Math.Round(singleMops, 1);
+                result.CpuSingleScore = Math.Clamp((int)Math.Round((singleMops / 295.0) * 100.0), 10, 1000);
 
-            double bwRatio = ramGbps / 32.0; // Reference DDR4 dual-channel ~32 GB/s R+W
-            double latRatio = ramNs > 10 ? 72.0 / ramNs : 1.0;
-            result.RamScore = Math.Clamp((int)Math.Round((bwRatio * 0.65 + latRatio * 0.35) * 100.0), 10, 400);
+                // Stage 2: CPU Multi-Core
+                ct.ThrowIfCancellationRequested();
+                progress?.Report(new BenchmarkProgress
+                {
+                    StageName = $"2/5 • CPU Çok Çekirdek Testi ({Environment.ProcessorCount} Thread)",
+                    Detail = "Tüm mantıksal çekirdekler paralel stres altında ölçülüyor (sıcaklık takip ediliyor)...",
+                    PercentComplete = 34
+                });
+                double multiMops = RunCpuMultiCore(ct);
+                result.CpuMultiMops = Math.Round(multiMops, 1);
+                result.CpuScalingRatio = singleMops > 0.1 ? Math.Round(multiMops / singleMops, 1) : 1.0;
+                result.CpuMultiScore = Math.Clamp((int)Math.Round((multiMops / 1450.0) * 100.0), 10, 1500);
 
-            // Stage 4: SSD / NVMe Storage Benchmark (Unbuffered Direct I/O)
-            ct.ThrowIfCancellationRequested();
-            progress?.Report(new BenchmarkProgress
+                // Stage 3: RAM Bandwidth & Latency
+                ct.ThrowIfCancellationRequested();
+                progress?.Report(new BenchmarkProgress
+                {
+                    StageName = "3/5 • RAM Bant Genişliği & Gecikme Testi",
+                    Detail = "192 MB sıralı transfer (GB/s) ve 64 MB L3-üstü gecikme (ns) ölçülüyor...",
+                    PercentComplete = 56
+                });
+                var (ramGbps, ramNs) = RunMemoryBenchmark(ct);
+                result.RamBandwidthGbPerSec = Math.Round(ramGbps, 1);
+                result.RamLatencyNs = Math.Round(ramNs, 1);
+
+                double bwRatio = ramGbps / 32.0;
+                double latRatio = ramNs > 10 ? 72.0 / ramNs : 1.0;
+                result.RamScore = Math.Clamp((int)Math.Round((bwRatio * 0.65 + latRatio * 0.35) * 100.0), 10, 400);
+
+                // Stage 4: 3D Vector / SIMD Shader Compute Throughput
+                ct.ThrowIfCancellationRequested();
+                progress?.Report(new BenchmarkProgress
+                {
+                    StageName = "4/5 • 3D Vektör / SIMD Hesaplama & Termal Kontrol",
+                    Detail = "4x4 Matris dönüşümü & SIMD vektör gölgelendirme iş hacmi ölçülüyor...",
+                    PercentComplete = 74
+                });
+                double vecMops = RunVectorShaderCompute(ct);
+                result.GpuThroughputMops = Math.Round(vecMops, 1);
+                result.GpuScore = Math.Clamp((int)Math.Round((vecMops / 95.0) * 100.0), 10, 800);
+
+                // Stage 5: SSD / NVMe Storage Benchmark (Unbuffered Direct I/O)
+                ct.ThrowIfCancellationRequested();
+                progress?.Report(new BenchmarkProgress
+                {
+                    StageName = $"5/5 • Disk Hız Testi ({result.TargetDrive})",
+                    Detail = "Önbelleksiz (NO_BUFFERING) Sıralı Okuma/Yazma & 4K IOPS ölçülüyor...",
+                    PercentComplete = 88
+                });
+                var (seqRead, seqWrite, r4kIops, w4kIops) = RunDiskBenchmark(result.TargetDrive, ct);
+                result.DiskSeqReadMbps = Math.Round(seqRead, 0);
+                result.DiskSeqWriteMbps = Math.Round(seqWrite, 0);
+                result.DiskRandom4kReadIops = r4kIops;
+                result.DiskRandom4kWriteIops = w4kIops;
+
+                double seqRatio = (seqRead / 2200.0) * 0.5 + (seqWrite / 1600.0) * 0.5;
+                double iopsRatio = (r4kIops / 25000.0) * 0.5 + (w4kIops / 22000.0) * 0.5;
+                result.DiskScore = Math.Clamp((int)Math.Round((seqRatio * 0.45 + iopsRatio * 0.55) * 100.0), 5, 500);
+            }
+            finally
             {
-                StageName = $"4/4 • Disk Hız Testi ({result.TargetDrive})",
-                Detail = "Önbelleksiz (NO_BUFFERING) Sıralı Okuma/Yazma & 4K IOPS ölçülüyor...",
-                PercentComplete = 85
-            });
-            var (seqRead, seqWrite, r4kIops, w4kIops) = RunDiskBenchmark(result.TargetDrive, ct);
-            result.DiskSeqReadMbps = Math.Round(seqRead, 0);
-            result.DiskSeqWriteMbps = Math.Round(seqWrite, 0);
-            result.DiskRandom4kReadIops = r4kIops;
-            result.DiskRandom4kWriteIops = w4kIops;
+                thermalCts.Cancel();
+                try { thermalTask.Wait(400); } catch { }
+            }
 
-            double seqRatio = (seqRead / 2200.0) * 0.5 + (seqWrite / 1600.0) * 0.5;
-            double iopsRatio = (r4kIops / 25000.0) * 0.5 + (w4kIops / 22000.0) * 0.5;
-            result.DiskScore = Math.Clamp((int)Math.Round((seqRatio * 0.45 + iopsRatio * 0.55) * 100.0), 5, 500);
+            result.PeakCpuTempC = peakCpuTemp.HasValue ? Math.Round(peakCpuTemp.Value, 0) : null;
+            result.PeakGpuTempC = peakGpuTemp.HasValue ? Math.Round(peakGpuTemp.Value, 0) : null;
+            result.ThermalThrottlingDetected = (peakCpuTemp >= 92.0) || (peakGpuTemp >= 86.0);
+            if (peakCpuTemp.HasValue || peakGpuTemp.HasValue)
+            {
+                string cStr = peakCpuTemp.HasValue ? $"Tepe CPU: {peakCpuTemp:F0}°C" : "";
+                string gStr = peakGpuTemp.HasValue ? $"Tepe GPU: {peakGpuTemp:F0}°C" : "";
+                string joined = string.Join("  •  ", new[] { cStr, gStr }.Where(x => !string.IsNullOrEmpty(x)));
+                result.ThermalSummary = result.ThermalThrottlingDetected
+                    ? $"⚠ TERMAL KISMA RİSKİ! {joined} — Termal macun / fan eğrisi kontrol edilmeli."
+                    : $"✓ Termal Kararlı ({joined})";
+            }
+            else
+            {
+                result.ThermalSummary = "Sıcaklık sensörü okunamadı (Sürücüsüz mod veya sensör desteği yok).";
+            }
 
             // UserBenchmark-style Weighted Profiles
             result.GamingPercent = Math.Clamp((int)Math.Round(
-                result.CpuSingleScore * 0.58 + result.RamScore * 0.24 + result.DiskScore * 0.18), 10, 450);
+                result.CpuSingleScore * 0.48 + result.RamScore * 0.22 + result.GpuScore * 0.14 + result.DiskScore * 0.16), 10, 450);
             result.DesktopPercent = Math.Clamp((int)Math.Round(
                 result.CpuSingleScore * 0.42 + result.DiskScore * 0.40 + result.RamScore * 0.18), 10, 450);
             result.WorkstationPercent = Math.Clamp((int)Math.Round(
-                result.CpuMultiScore * 0.56 + result.RamScore * 0.24 + result.DiskScore * 0.20), 10, 450);
+                result.CpuMultiScore * 0.48 + result.GpuScore * 0.18 + result.RamScore * 0.18 + result.DiskScore * 0.16), 10, 450);
             result.OverallScore = (int)Math.Round(
                 (result.GamingPercent + result.DesktopPercent + result.WorkstationPercent) / 3.0);
 
@@ -123,13 +185,50 @@ public sealed class BenchmarkService
             progress?.Report(new BenchmarkProgress
             {
                 StageName = "Tamamlandı",
-                Detail = $"Genel Sistem Puanı: %{result.OverallScore} ({result.TierBadge})",
+                Detail = $"Genel Sistem Puanı: %{result.OverallScore} ({result.TierBadge}) • {result.ThermalSummary}",
                 PercentComplete = 100
             });
 
             SaveHistoryEntry(result);
             return result;
         }, ct);
+    }
+
+    private static double RunVectorShaderCompute(CancellationToken ct)
+    {
+        int threads = Math.Max(1, Environment.ProcessorCount);
+        const int durationMs = 900;
+        long totalOps = 0;
+
+        var tasks = new Task[threads];
+        var sw = Stopwatch.StartNew();
+        for (int t = 0; t < threads; t++)
+        {
+            int seed = t + 1;
+            tasks[t] = Task.Run(() =>
+            {
+                var mat = Matrix4x4.CreateRotationY(0.35f * seed) * Matrix4x4.CreateScale(1.0001f);
+                var v1 = new Vector4(1.1f, 2.2f, 3.3f, 1.0f);
+                var v2 = new Vector4(0.9f, -1.4f, 2.7f, 1.0f);
+                long localOps = 0;
+                var lsw = Stopwatch.StartNew();
+                while (lsw.ElapsedMilliseconds < durationMs && !ct.IsCancellationRequested)
+                {
+                    for (int i = 0; i < 4096; i++)
+                    {
+                        v1 = Vector4.Transform(v1, mat);
+                        v2 = Vector4.Normalize(v1 + v2);
+                        v1 = Vector4.Lerp(v1, v2, 0.25f);
+                    }
+                    localOps += 4096 * 4;
+                }
+                if (v1.X > 99999999f) localOps--;
+                Interlocked.Add(ref totalOps, localOps);
+            }, ct);
+        }
+        Task.WaitAll(tasks, ct);
+        sw.Stop();
+        return totalOps / sw.Elapsed.TotalSeconds / 1_000_000.0;
     }
 
     private static double RunCpuSingleCore(CancellationToken ct)

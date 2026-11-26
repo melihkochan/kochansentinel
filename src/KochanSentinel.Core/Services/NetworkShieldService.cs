@@ -102,17 +102,40 @@ public sealed class NetworkShieldService
 
     private static async Task ResolveGeoIpAsync(string ip, CancellationToken ct)
     {
+        // Primary: HTTPS ipwho.is (encrypted, no API key needed)
         try
         {
-            using var resp = await Http.GetAsync($"http://ip-api.com/json/{Uri.EscapeDataString(ip)}?fields=status,countryCode,country,isp", ct);
-            if (!resp.IsSuccessStatusCode) return;
-            var json = await resp.Content.ReadAsStringAsync(ct);
-            using var doc = JsonDocument.Parse(json);
-            if (doc.RootElement.TryGetProperty("status", out var st) && st.GetString() == "success")
+            using var resp = await Http.GetAsync($"https://ipwho.is/{Uri.EscapeDataString(ip)}", ct);
+            if (resp.IsSuccessStatusCode)
             {
+                var json = await resp.Content.ReadAsStringAsync(ct);
+                using var doc = JsonDocument.Parse(json);
+                if (doc.RootElement.TryGetProperty("success", out var st) && st.ValueKind == JsonValueKind.True)
+                {
+                    string cc = doc.RootElement.TryGetProperty("country_code", out var cEl) ? (cEl.GetString() ?? "") : "";
+                    string isp = "";
+                    if (doc.RootElement.TryGetProperty("connection", out var conn) &&
+                        conn.TryGetProperty("isp", out var iEl))
+                        isp = iEl.GetString() ?? "";
+                    GeoCache[ip] = string.IsNullOrEmpty(isp) ? cc : $"[{cc}] {isp}";
+                    return;
+                }
+            }
+        }
+        catch { }
+
+        // Fallback: HTTPS freeipapi.com
+        try
+        {
+            using var resp = await Http.GetAsync($"https://freeipapi.com/api/json/{Uri.EscapeDataString(ip)}", ct);
+            if (resp.IsSuccessStatusCode)
+            {
+                var json = await resp.Content.ReadAsStringAsync(ct);
+                using var doc = JsonDocument.Parse(json);
                 string cc = doc.RootElement.TryGetProperty("countryCode", out var cEl) ? (cEl.GetString() ?? "") : "";
-                string isp = doc.RootElement.TryGetProperty("isp", out var iEl) ? (iEl.GetString() ?? "") : "";
-                GeoCache[ip] = string.IsNullOrEmpty(isp) ? cc : $"[{cc}] {isp}";
+                string country = doc.RootElement.TryGetProperty("countryName", out var nEl) ? (nEl.GetString() ?? "") : "";
+                if (!string.IsNullOrEmpty(cc))
+                    GeoCache[ip] = string.IsNullOrEmpty(country) ? cc : $"[{cc}] {country}";
             }
         }
         catch { }

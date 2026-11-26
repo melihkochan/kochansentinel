@@ -13,7 +13,7 @@ public sealed class RamOptimizerService
     private static readonly HashSet<string> ProtectedProcesses = new(StringComparer.OrdinalIgnoreCase)
     {
         "System", "Idle", "smss", "csrss", "wininit", "services", "lsass", "svchost",
-        "winlogon", "dwm", "explorer", "MsMpEng", "NisSrv", "KochanSentinel.App"
+        "winlogon", "dwm", "explorer", "MsMpEng", "NisSrv", "KochanSentinel", "KochanSentinel.App"
     };
 
     private static readonly HashSet<string> EcoTargetBloatware = new(StringComparer.OrdinalIgnoreCase)

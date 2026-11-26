@@ -20,7 +20,7 @@ namespace KochanSentinel.Core.Services;
 /// </summary>
 public sealed class SystemTweaksAndRepairService
 {
-    public const string CurrentAppVersion = "1.0.1";
+    public static string CurrentAppVersion => UpdateService.GetCurrentAppVersion();
     private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(6) };
 
     [DllImport("user32.dll", SetLastError = true)]

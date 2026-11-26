@@ -46,20 +46,34 @@ public sealed class ExePathToIconConverter : IValueConverter
 
 public sealed class SeverityToBrushConverter : IValueConverter
 {
+    private static readonly SolidColorBrush CriticalBrush = Freeze(System.Windows.Media.Color.FromRgb(252, 165, 165));
+    private static readonly SolidColorBrush HighBrush = Freeze(System.Windows.Media.Color.FromRgb(253, 186, 116));
+    private static readonly SolidColorBrush MediumBrush = Freeze(System.Windows.Media.Color.FromRgb(253, 224, 71));
+    private static readonly SolidColorBrush LowBrush = Freeze(System.Windows.Media.Color.FromRgb(147, 197, 253));
+    private static readonly SolidColorBrush InfoBrush = Freeze(System.Windows.Media.Color.FromRgb(134, 239, 172));
+    private static readonly SolidColorBrush FallbackBrush = Freeze(Colors.Gray);
+
+    internal static SolidColorBrush Freeze(System.Windows.Media.Color c)
+    {
+        var b = new SolidColorBrush(c);
+        b.Freeze();
+        return b;
+    }
+
     public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
     {
         if (value is FindingSeverity sev)
         {
             return sev switch
             {
-                FindingSeverity.Critical => new SolidColorBrush(System.Windows.Media.Color.FromRgb(252, 165, 165)), // #FCA5A5
-                FindingSeverity.High => new SolidColorBrush(System.Windows.Media.Color.FromRgb(253, 186, 116)),     // #FDBA74
-                FindingSeverity.Medium => new SolidColorBrush(System.Windows.Media.Color.FromRgb(253, 224, 71)),    // #FDE047
-                FindingSeverity.Low => new SolidColorBrush(System.Windows.Media.Color.FromRgb(147, 197, 253)),      // #93C5FD
-                _ => new SolidColorBrush(System.Windows.Media.Color.FromRgb(134, 239, 172))                         // #86EFAC
+                FindingSeverity.Critical => CriticalBrush,
+                FindingSeverity.High => HighBrush,
+                FindingSeverity.Medium => MediumBrush,
+                FindingSeverity.Low => LowBrush,
+                _ => InfoBrush
             };
         }
-        return new SolidColorBrush(Colors.Gray);
+        return FallbackBrush;
     }
 
     public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture) => throw new NotImplementedException();
@@ -67,20 +81,27 @@ public sealed class SeverityToBrushConverter : IValueConverter
 
 public sealed class SeverityToBgBrushConverter : IValueConverter
 {
+    private static readonly SolidColorBrush CriticalBg = SeverityToBrushConverter.Freeze(System.Windows.Media.Color.FromArgb(70, 239, 68, 68));
+    private static readonly SolidColorBrush HighBg = SeverityToBrushConverter.Freeze(System.Windows.Media.Color.FromArgb(65, 249, 115, 22));
+    private static readonly SolidColorBrush MediumBg = SeverityToBrushConverter.Freeze(System.Windows.Media.Color.FromArgb(55, 234, 179, 8));
+    private static readonly SolidColorBrush LowBg = SeverityToBrushConverter.Freeze(System.Windows.Media.Color.FromArgb(55, 59, 130, 246));
+    private static readonly SolidColorBrush InfoBg = SeverityToBrushConverter.Freeze(System.Windows.Media.Color.FromArgb(55, 34, 197, 94));
+    private static readonly SolidColorBrush TransparentBg = SeverityToBrushConverter.Freeze(Colors.Transparent);
+
     public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
     {
         if (value is FindingSeverity sev)
         {
             return sev switch
             {
-                FindingSeverity.Critical => new SolidColorBrush(System.Windows.Media.Color.FromArgb(70, 239, 68, 68)),
-                FindingSeverity.High => new SolidColorBrush(System.Windows.Media.Color.FromArgb(65, 249, 115, 22)),
-                FindingSeverity.Medium => new SolidColorBrush(System.Windows.Media.Color.FromArgb(55, 234, 179, 8)),
-                FindingSeverity.Low => new SolidColorBrush(System.Windows.Media.Color.FromArgb(55, 59, 130, 246)),
-                _ => new SolidColorBrush(System.Windows.Media.Color.FromArgb(55, 34, 197, 94))
+                FindingSeverity.Critical => CriticalBg,
+                FindingSeverity.High => HighBg,
+                FindingSeverity.Medium => MediumBg,
+                FindingSeverity.Low => LowBg,
+                _ => InfoBg
             };
         }
-        return new SolidColorBrush(Colors.Transparent);
+        return TransparentBg;
     }
 
     public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture) => throw new NotImplementedException();
@@ -88,20 +109,27 @@ public sealed class SeverityToBgBrushConverter : IValueConverter
 
 public sealed class SeverityToBorderBrushConverter : IValueConverter
 {
+    private static readonly SolidColorBrush CriticalBd = SeverityToBrushConverter.Freeze(System.Windows.Media.Color.FromArgb(140, 239, 68, 68));
+    private static readonly SolidColorBrush HighBd = SeverityToBrushConverter.Freeze(System.Windows.Media.Color.FromArgb(130, 249, 115, 22));
+    private static readonly SolidColorBrush MediumBd = SeverityToBrushConverter.Freeze(System.Windows.Media.Color.FromArgb(120, 234, 179, 8));
+    private static readonly SolidColorBrush LowBd = SeverityToBrushConverter.Freeze(System.Windows.Media.Color.FromArgb(120, 59, 130, 246));
+    private static readonly SolidColorBrush InfoBd = SeverityToBrushConverter.Freeze(System.Windows.Media.Color.FromArgb(120, 34, 197, 94));
+    private static readonly SolidColorBrush TransparentBd = SeverityToBrushConverter.Freeze(Colors.Transparent);
+
     public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
     {
         if (value is FindingSeverity sev)
         {
             return sev switch
             {
-                FindingSeverity.Critical => new SolidColorBrush(System.Windows.Media.Color.FromArgb(140, 239, 68, 68)),
-                FindingSeverity.High => new SolidColorBrush(System.Windows.Media.Color.FromArgb(130, 249, 115, 22)),
-                FindingSeverity.Medium => new SolidColorBrush(System.Windows.Media.Color.FromArgb(120, 234, 179, 8)),
-                FindingSeverity.Low => new SolidColorBrush(System.Windows.Media.Color.FromArgb(120, 59, 130, 246)),
-                _ => new SolidColorBrush(System.Windows.Media.Color.FromArgb(120, 34, 197, 94))
+                FindingSeverity.Critical => CriticalBd,
+                FindingSeverity.High => HighBd,
+                FindingSeverity.Medium => MediumBd,
+                FindingSeverity.Low => LowBd,
+                _ => InfoBd
             };
         }
-        return new SolidColorBrush(Colors.Transparent);
+        return TransparentBd;
     }
 
     public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture) => throw new NotImplementedException();
@@ -109,12 +137,16 @@ public sealed class SeverityToBorderBrushConverter : IValueConverter
 
 public sealed class PercentToBrushConverter : IValueConverter
 {
+    private static readonly SolidColorBrush HotBrush = SeverityToBrushConverter.Freeze(System.Windows.Media.Color.FromRgb(239, 68, 68));
+    private static readonly SolidColorBrush WarnBrush = SeverityToBrushConverter.Freeze(System.Windows.Media.Color.FromRgb(245, 158, 11));
+    private static readonly SolidColorBrush CoolBrush = SeverityToBrushConverter.Freeze(System.Windows.Media.Color.FromRgb(56, 189, 248));
+
     public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
     {
         double pct = value is double d ? d : 0;
-        if (pct >= 85) return new SolidColorBrush(System.Windows.Media.Color.FromRgb(239, 68, 68));
-        if (pct >= 65) return new SolidColorBrush(System.Windows.Media.Color.FromRgb(245, 158, 11));
-        return new SolidColorBrush(System.Windows.Media.Color.FromRgb(56, 189, 248));
+        if (pct >= 85) return HotBrush;
+        if (pct >= 65) return WarnBrush;
+        return CoolBrush;
     }
 
     public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture) => throw new NotImplementedException();
@@ -150,15 +182,28 @@ public sealed class NotNullToVisibilityConverter : IValueConverter
 
 public sealed class HexToBrushConverter : IValueConverter
 {
+    private static readonly ConcurrentDictionary<string, System.Windows.Media.Brush> Cache = new(StringComparer.OrdinalIgnoreCase);
+    private static readonly SolidColorBrush DefaultBrush = SeverityToBrushConverter.Freeze(System.Windows.Media.Color.FromRgb(56, 189, 248));
+
     public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
     {
-        try
+        if (value is string hex && !string.IsNullOrWhiteSpace(hex))
         {
-            if (value is string hex && !string.IsNullOrWhiteSpace(hex))
-                return (System.Windows.Media.Brush)new System.Windows.Media.BrushConverter().ConvertFromString(hex)!;
+            return Cache.GetOrAdd(hex, h =>
+            {
+                try
+                {
+                    if (new System.Windows.Media.BrushConverter().ConvertFromString(h) is System.Windows.Media.Brush b)
+                    {
+                        if (b.CanFreeze) b.Freeze();
+                        return b;
+                    }
+                }
+                catch { }
+                return DefaultBrush;
+            });
         }
-        catch { }
-        return new SolidColorBrush(System.Windows.Media.Color.FromRgb(56, 189, 248));
+        return DefaultBrush;
     }
 
     public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture) => throw new NotImplementedException();
@@ -166,16 +211,22 @@ public sealed class HexToBrushConverter : IValueConverter
 
 public sealed class CategoryToBrushConverter : IValueConverter
 {
+    private static readonly SolidColorBrush KochanBrush = SeverityToBrushConverter.Freeze(System.Windows.Media.Color.FromRgb(56, 189, 248));
+    private static readonly SolidColorBrush BrowserBrush = SeverityToBrushConverter.Freeze(System.Windows.Media.Color.FromRgb(14, 165, 233));
+    private static readonly SolidColorBrush GameBrush = SeverityToBrushConverter.Freeze(System.Windows.Media.Color.FromRgb(168, 85, 247));
+    private static readonly SolidColorBrush AppBrush = SeverityToBrushConverter.Freeze(System.Windows.Media.Color.FromRgb(16, 185, 129));
+    private static readonly SolidColorBrush OtherBrush = SeverityToBrushConverter.Freeze(System.Windows.Media.Color.FromRgb(100, 116, 139));
+
     public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
     {
         var cat = value?.ToString() ?? "";
         return cat switch
         {
-            "KOCHAN" => new SolidColorBrush(System.Windows.Media.Color.FromRgb(56, 189, 248)),
-            "Tarayıcı" => new SolidColorBrush(System.Windows.Media.Color.FromRgb(14, 165, 233)),
-            "Oyun / Launcher" => new SolidColorBrush(System.Windows.Media.Color.FromRgb(168, 85, 247)),
-            "Uygulama" => new SolidColorBrush(System.Windows.Media.Color.FromRgb(16, 185, 129)),
-            _ => new SolidColorBrush(System.Windows.Media.Color.FromRgb(100, 116, 139))
+            "KOCHAN" => KochanBrush,
+            "Tarayıcı" => BrowserBrush,
+            "Oyun / Launcher" => GameBrush,
+            "Uygulama" => AppBrush,
+            _ => OtherBrush
         };
     }
 
@@ -184,10 +235,11 @@ public sealed class CategoryToBrushConverter : IValueConverter
 
 public sealed class SignedToBrushConverter : IValueConverter
 {
+    private static readonly SolidColorBrush SignedBrush = SeverityToBrushConverter.Freeze(System.Windows.Media.Color.FromRgb(34, 197, 94));
+    private static readonly SolidColorBrush UnsignedBrush = SeverityToBrushConverter.Freeze(System.Windows.Media.Color.FromRgb(249, 115, 22));
+
     public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
-        => value is true
-            ? new SolidColorBrush(System.Windows.Media.Color.FromRgb(34, 197, 94))
-            : new SolidColorBrush(System.Windows.Media.Color.FromRgb(249, 115, 22));
+        => value is true ? SignedBrush : UnsignedBrush;
 
     public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture) => throw new NotImplementedException();
 }
@@ -202,12 +254,16 @@ public sealed class SignedToTextConverter : IValueConverter
 
 public sealed class HealthScoreToBrushConverter : IValueConverter
 {
+    private static readonly SolidColorBrush GreenBrush = SeverityToBrushConverter.Freeze(System.Windows.Media.Color.FromRgb(34, 197, 94));
+    private static readonly SolidColorBrush AmberBrush = SeverityToBrushConverter.Freeze(System.Windows.Media.Color.FromRgb(245, 158, 11));
+    private static readonly SolidColorBrush RedBrush = SeverityToBrushConverter.Freeze(System.Windows.Media.Color.FromRgb(239, 68, 68));
+
     public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
     {
         int score = value is int i ? i : 100;
-        if (score >= 85) return new SolidColorBrush(System.Windows.Media.Color.FromRgb(34, 197, 94));  // Green
-        if (score >= 65) return new SolidColorBrush(System.Windows.Media.Color.FromRgb(245, 158, 11)); // Amber
-        return new SolidColorBrush(System.Windows.Media.Color.FromRgb(239, 68, 68));                 // Red
+        if (score >= 85) return GreenBrush;
+        if (score >= 65) return AmberBrush;
+        return RedBrush;
     }
 
     public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture) => throw new NotImplementedException();
@@ -215,12 +271,16 @@ public sealed class HealthScoreToBrushConverter : IValueConverter
 
 public sealed class DiskPercentToBrushConverter : IValueConverter
 {
+    private static readonly SolidColorBrush HotRed = SeverityToBrushConverter.Freeze(System.Windows.Media.Color.FromRgb(239, 68, 68));
+    private static readonly SolidColorBrush Amber = SeverityToBrushConverter.Freeze(System.Windows.Media.Color.FromRgb(245, 158, 11));
+    private static readonly SolidColorBrush SkyBlue = SeverityToBrushConverter.Freeze(System.Windows.Media.Color.FromRgb(56, 189, 248));
+
     public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
     {
         double pct = value is double d ? d : 0;
-        if (pct >= 35) return new SolidColorBrush(System.Windows.Media.Color.FromRgb(239, 68, 68));  // Hot Red
-        if (pct >= 15) return new SolidColorBrush(System.Windows.Media.Color.FromRgb(245, 158, 11)); // Amber
-        return new SolidColorBrush(System.Windows.Media.Color.FromRgb(56, 189, 248));                 // Sky Blue
+        if (pct >= 35) return HotRed;
+        if (pct >= 15) return Amber;
+        return SkyBlue;
     }
 
     public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture) => throw new NotImplementedException();

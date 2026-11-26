@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.Globalization;
 using System.Management;
 using KochanSentinel.Core.Models;
 using LibreHardwareMonitor.Hardware;
@@ -22,16 +24,29 @@ public sealed class HardwareSensorService : IDisposable
     private Computer? _computer;
     private readonly object _lock = new();
     private bool _initialized;
+    private bool _driverlessMode;
     private SensorSnapshot _lastSnapshot = new();
     private DateTime _lastPoll = DateTime.MinValue;
+    private bool _nvidiaSmiAvailable = true;
 
-    public void InitializeAsync()
+    public string DriverStatus { get; private set; } = "Başlatılıyor...";
+
+    public void InitializeAsync(bool safeDriverlessMode = false)
     {
+        _driverlessMode = safeDriverlessMode;
+        if (safeDriverlessMode)
+        {
+            DisposeComputerOnly();
+            DriverStatus = "Sürücüsüz Güvenli Mod (WinRing0 Kapalı — Defender Dostu)";
+            _initialized = true;
+            return;
+        }
+
         System.Threading.Tasks.Task.Run(() =>
         {
             lock (_lock)
             {
-                if (_initialized) return;
+                if (_initialized && _computer != null) return;
                 try
                 {
                     _computer = new Computer
@@ -46,22 +61,40 @@ public sealed class HardwareSensorService : IDisposable
                     };
                     _computer.Open();
                     _initialized = true;
+                    DriverStatus = "LibreHardwareMonitor Aktif";
                 }
                 catch
                 {
                     _computer = null;
+                    _driverlessMode = true;
+                    _initialized = true;
+                    DriverStatus = "Güvenli Fallback Modu (Sensör sürücüsü engellendi)";
                 }
             }
         });
     }
 
+    public void SetDriverlessMode(bool safeDriverlessMode)
+    {
+        if (_driverlessMode == safeDriverlessMode && _initialized) return;
+        InitializeAsync(safeDriverlessMode);
+    }
+
     public SensorSnapshot ReadSensors()
     {
-        if (!_initialized || _computer == null)
+        if (!_initialized)
             return _lastSnapshot;
 
         if ((DateTime.UtcNow - _lastPoll).TotalSeconds < 1.5)
             return _lastSnapshot;
+
+        if (_driverlessMode || _computer == null)
+        {
+            _lastPoll = DateTime.UtcNow;
+            var fallback = ReadDriverlessFallback();
+            _lastSnapshot = fallback;
+            return fallback;
+        }
 
         lock (_lock)
         {
@@ -158,6 +191,61 @@ public sealed class HardwareSensorService : IDisposable
             {
                 return _lastSnapshot;
             }
+        }
+    }
+
+    private SensorSnapshot ReadDriverlessFallback()
+    {
+        var snap = new SensorSnapshot();
+        // Zero ring-0 driver needed: read NVIDIA GPU telemetry cleanly via nvidia-smi if present
+        if (_nvidiaSmiAvailable)
+        {
+            try
+            {
+                var psi = new ProcessStartInfo("nvidia-smi",
+                    "--query-gpu=temperature.gpu,utilization.gpu,memory.used,memory.total,fan.speed --format=csv,noheader,nounits")
+                {
+                    CreateNoWindow = true,
+                    UseShellExecute = false,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true
+                };
+                using var p = Process.Start(psi);
+                if (p != null)
+                {
+                    var line = p.StandardOutput.ReadLine();
+                    p.WaitForExit(1200);
+                    if (!string.IsNullOrWhiteSpace(line))
+                    {
+                        var parts = line.Split(',', StringSplitOptions.TrimEntries);
+                        if (parts.Length >= 4)
+                        {
+                            if (double.TryParse(parts[0], NumberStyles.Float, CultureInfo.InvariantCulture, out var gt))
+                                snap.GpuTemp = Math.Round(gt, 1);
+                            if (double.TryParse(parts[1], NumberStyles.Float, CultureInfo.InvariantCulture, out var gl))
+                                snap.GpuLoad = Math.Round(gl, 0);
+                            if (double.TryParse(parts[2], NumberStyles.Float, CultureInfo.InvariantCulture, out var vu))
+                                snap.GpuVramUsedMb = Math.Round(vu, 0);
+                            if (double.TryParse(parts[3], NumberStyles.Float, CultureInfo.InvariantCulture, out var vt))
+                                snap.GpuVramTotalMb = Math.Round(vt, 0);
+                        }
+                    }
+                }
+            }
+            catch
+            {
+                _nvidiaSmiAvailable = false;
+            }
+        }
+        return snap;
+    }
+
+    private void DisposeComputerOnly()
+    {
+        lock (_lock)
+        {
+            try { _computer?.Close(); } catch { }
+            _computer = null;
         }
     }
 

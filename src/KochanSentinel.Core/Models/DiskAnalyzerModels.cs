@@ -79,3 +79,28 @@ public sealed class DiskScanSummary
 
     public string TotalSizeFormatted => JunkCategory.FormatBytes(TotalScannedBytes);
 }
+
+public sealed class DuplicateFileItem
+{
+    public string FullPath { get; set; } = "";
+    public string FileName { get; set; } = "";
+    public string DirectoryPath { get; set; } = "";
+    public long SizeBytes { get; set; }
+    public DateTime LastModified { get; set; }
+    public bool IsOriginalKeeper { get; set; }
+    public string SizeFormatted => JunkCategory.FormatBytes(SizeBytes);
+    public string RoleBadge => IsOriginalKeeper ? "Asıl (Korunur)" : "Kopya";
+}
+
+public sealed class DuplicateFileGroup
+{
+    public string Sha256Short { get; set; } = "";
+    public string FileNameSample { get; set; } = "";
+    public long FileSizeBytes { get; set; }
+    public List<DuplicateFileItem> Files { get; set; } = new();
+    public int CopyCount => Files.Count;
+    public long WastedBytes => Math.Max(0, (long)(Files.Count - 1) * FileSizeBytes);
+    public string FileSizeFormatted => JunkCategory.FormatBytes(FileSizeBytes);
+    public string WastedFormatted => JunkCategory.FormatBytes(WastedBytes);
+    public string PathsPreview => string.Join("  |  ", Files.ConvertAll(f => f.FullPath));
+}

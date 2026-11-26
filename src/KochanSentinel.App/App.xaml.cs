@@ -32,16 +32,35 @@ public partial class App : System.Windows.Application
             return;
         }
 
+        // Fallback Self-Update Helper Mode: waits for old PID to exit, overwrites target EXE, and launches it
+        if (e.Args.Length >= 3 && e.Args[0].Equals("--apply-update", StringComparison.OrdinalIgnoreCase) &&
+            int.TryParse(e.Args[1], out int oldPid))
+        {
+            RunApplyUpdateFallback(oldPid, e.Args[2]);
+            Shutdown();
+            return;
+        }
+
+        // Clean up any leftover .old executable from a recent self-update
+        KochanSentinel.Core.Services.UpdateService.CleanupOldUpdateLeftovers();
+
         _singleInstanceMutex = new Mutex(true, "KochanSentinel_SingleInstance_Mutex", out bool createdNew);
         if (!createdNew)
         {
-            System.Windows.MessageBox.Show(
-                "KOCHAN Sentinel arka planda zaten çalışıyor. Sağ alttaki sistem tepsisinden açabilirsiniz.",
-                "KOCHAN Sentinel",
-                MessageBoxButton.OK,
-                MessageBoxImage.Information);
-            Shutdown();
-            return;
+            // Brief retry in case we just restarted right after self-update
+            Thread.Sleep(600);
+            _singleInstanceMutex.Dispose();
+            _singleInstanceMutex = new Mutex(true, "KochanSentinel_SingleInstance_Mutex", out createdNew);
+            if (!createdNew)
+            {
+                System.Windows.MessageBox.Show(
+                    "KOCHAN Sentinel arka planda zaten çalışıyor. Sağ alttaki sistem tepsisinden açabilirsiniz.",
+                    "KOCHAN Sentinel",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information);
+                Shutdown();
+                return;
+            }
         }
 
         try { if (File.Exists(CleanExitFlagPath)) File.Delete(CleanExitFlagPath); } catch { }
@@ -49,12 +68,63 @@ public partial class App : System.Windows.Application
         base.OnStartup(e);
 
         bool startMinimized = e.Args.Any(a => a.Equals("--minimized", StringComparison.OrdinalIgnoreCase));
-        var mainWindow = new MainWindow(startMinimized);
+        bool justUpdated = e.Args.Any(a => a.Equals("--updated", StringComparison.OrdinalIgnoreCase));
+        var mainWindow = new MainWindow(startMinimized, justUpdated);
         MainWindow = mainWindow;
         if (!startMinimized)
             mainWindow.Show();
 
         TryStartWatchdogHelper(mainWindow.IsSelfDefenseEnabled);
+    }
+
+    public void PrepareForSelfUpdate()
+    {
+        MarkCleanExit();
+        StopWatchdogHelper();
+        try
+        {
+            _singleInstanceMutex?.ReleaseMutex();
+            _singleInstanceMutex?.Dispose();
+            _singleInstanceMutex = null;
+        }
+        catch { }
+    }
+
+    private static void RunApplyUpdateFallback(int oldPid, string targetPath)
+    {
+        try
+        {
+            try
+            {
+                using var oldProc = Process.GetProcessById(oldPid);
+                oldProc.WaitForExit(8000);
+            }
+            catch { }
+
+            Thread.Sleep(350);
+            string? selfExe = Environment.ProcessPath;
+            if (!string.IsNullOrWhiteSpace(selfExe) && File.Exists(selfExe) && !string.IsNullOrWhiteSpace(targetPath))
+            {
+                for (int attempt = 0; attempt < 6; attempt++)
+                {
+                    try
+                    {
+                        File.Copy(selfExe, targetPath, overwrite: true);
+                        break;
+                    }
+                    catch
+                    {
+                        Thread.Sleep(350);
+                    }
+                }
+                Process.Start(new ProcessStartInfo(targetPath, "--updated")
+                {
+                    UseShellExecute = true,
+                    WorkingDirectory = Path.GetDirectoryName(targetPath) ?? ""
+                });
+            }
+        }
+        catch { }
     }
 
     public void SyncWatchdogState(bool enable)

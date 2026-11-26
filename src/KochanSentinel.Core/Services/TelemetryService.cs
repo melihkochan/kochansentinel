@@ -21,6 +21,11 @@ public sealed class TelemetryService : IDisposable
     private PerformanceCounter? _diskTimeCounter;
     private readonly HardwareSensorService _sensorService = new();
     private readonly FpsMonitorService _fpsMonitor = new();
+    private readonly ProcessNetworkMonitorService _procNetMonitor = new();
+    private List<(int Pid, string Name)> _lastProcessNames = new();
+    private Dictionary<int, (double DownKb, double UpKb)> _lastNetRates = new();
+
+    public IReadOnlyList<(int Pid, string Name)> LastProcessNamesSnapshot => _lastProcessNames;
 
     private string _cpuName = "İşlemci";
     private string _gpuName = "Ekran Kartı";
@@ -47,15 +52,25 @@ public sealed class TelemetryService : IDisposable
         IsElevated = principal.IsInRole(WindowsBuiltInRole.Administrator);
 
         // Initialize PerformanceCounters, WMI & LibreHardwareMonitor asynchronously
-        _sensorService.InitializeAsync();
+        _sensorService.InitializeAsync(safeDriverlessMode: false);
         if (IsElevated)
+        {
             _fpsMonitor.Start();
+            _procNetMonitor.Start();
+        }
         _ = System.Threading.Tasks.Task.Run(() =>
         {
             InitCounters();
             LoadHardwareNames();
         });
     }
+
+    public void SetSafeDriverlessSensors(bool safeDriverlessMode)
+    {
+        _sensorService.SetDriverlessMode(safeDriverlessMode);
+    }
+
+    public SensorSnapshot ReadSensorsNow() => _sensorService.ReadSensors();
 
     private void InitCounters()
     {
@@ -159,7 +174,18 @@ public sealed class TelemetryService : IDisposable
 
         SampleNetwork(metrics);
         SampleDrives(metrics);
-        metrics.ActiveProcessCount = Process.GetProcesses().Length;
+
+        // Properly dispose all Process handles while capturing lightweight snapshot for GameModeService
+        var rawProcs = Process.GetProcesses();
+        var nameSnapshot = new List<(int Pid, string Name)>(rawProcs.Length);
+        foreach (var rp in rawProcs)
+        {
+            try { nameSnapshot.Add((rp.Id, rp.ProcessName)); }
+            catch { }
+            finally { rp.Dispose(); }
+        }
+        _lastProcessNames = nameSnapshot;
+        metrics.ActiveProcessCount = rawProcs.Length;
 
         if (IsElevated)
         {
@@ -172,6 +198,11 @@ public sealed class TelemetryService : IDisposable
             metrics.FanRpm = snap.FanRpm;
             metrics.CurrentFps = _fpsMonitor.GetForegroundFps();
             metrics.SmartDrives = snap.StorageDrives;
+            metrics.SensorDriverStatus = _sensorService.DriverStatus;
+        }
+        else
+        {
+            metrics.SensorDriverStatus = "Standart Mod";
         }
 
         ComputeHealthScore(metrics, highRiskFindings, mediumRiskFindings);
@@ -365,6 +396,8 @@ public sealed class TelemetryService : IDisposable
         var now = DateTime.UtcNow;
         int cores = Environment.ProcessorCount;
         var tcpByPid = GetActiveTcpConnectionsByPid();
+        if (IsElevated)
+            _lastNetRates = _procNetMonitor.CaptureRatesAndReset();
 
         foreach (var proc in Process.GetProcesses())
         {
@@ -401,6 +434,7 @@ public sealed class TelemetryService : IDisposable
                 catch { }
 
                 tcpByPid.TryGetValue(proc.Id, out var netInfo);
+                _lastNetRates.TryGetValue(proc.Id, out var netRate);
 
                 string path = "";
                 string desc = "";
@@ -427,6 +461,8 @@ public sealed class TelemetryService : IDisposable
                     CpuPercent = cpuPct,
                     RamMb = Math.Round(proc.WorkingSet64 / (1024.0 * 1024.0), 1),
                     DiskKbPerSec = diskKbPerSec,
+                    NetDownloadKbPerSec = netRate.DownKb,
+                    NetUploadKbPerSec = netRate.UpKb,
                     ActiveConnections = netInfo.Count,
                     RemoteEndpoints = netInfo.Endpoints ?? "",
                     Priority = SafeGetPriority(proc),
@@ -460,7 +496,7 @@ public sealed class TelemetryService : IDisposable
         {
             "CPU" => list.OrderByDescending(p => p.CpuPercent).ThenByDescending(p => p.RamMb),
             "Disk" => list.OrderByDescending(p => p.DiskKbPerSec).ThenByDescending(p => p.RamMb),
-            "Network" => list.OrderByDescending(p => p.ActiveConnections).ThenByDescending(p => p.RamMb),
+            "Network" => list.OrderByDescending(p => p.NetDownloadKbPerSec + p.NetUploadKbPerSec).ThenByDescending(p => p.ActiveConnections).ThenByDescending(p => p.RamMb),
             _ => list.OrderByDescending(p => p.RamMb).ThenByDescending(p => p.CpuPercent)
         };
 
@@ -611,6 +647,17 @@ public sealed class TelemetryService : IDisposable
         catch { return false; }
     }
 
+    public bool SetProcessPriority(int pid, ProcessPriorityClass priority)
+    {
+        try
+        {
+            using var proc = Process.GetProcessById(pid);
+            proc.PriorityClass = priority;
+            return true;
+        }
+        catch { return false; }
+    }
+
     public bool KillProcess(int pid)
     {
         try
@@ -629,6 +676,7 @@ public sealed class TelemetryService : IDisposable
         _diskWriteCounter?.Dispose();
         _diskTimeCounter?.Dispose();
         _fpsMonitor.Dispose();
+        _procNetMonitor.Dispose();
         _sensorService.Dispose();
     }
 }
